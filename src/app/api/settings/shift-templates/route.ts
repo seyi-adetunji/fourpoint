@@ -21,7 +21,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { code, name, startTime, endTime, graceLate, graceEarly } = body;
+    const { code, name, startTime, endTime, color, graceLate, graceEarly } = body;
 
     if (!code || !name || !startTime || !endTime) {
       return NextResponse.json(
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
         name,
         startTime,
         endTime,
+        color: color || "#6B7280",
         graceLate: graceLate ?? 15,
         graceEarly: graceEarly ?? 15,
       },

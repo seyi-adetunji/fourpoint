@@ -103,14 +103,39 @@ export default function ShiftTemplateManager({ initialTemplates }: { initialTemp
 
         {templates.map(t => (
           editing === t.id ? (
-            <div key={t.id} className="card p-6 border-2 border-primary/30">
+            <div key={t.id} className="card p-6 border-2 border-primary/30 bg-primary/5 animate-fade-in">
               <div className="space-y-4">
-                <input className="input py-1 w-full" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
-                <div className="flex items-center gap-2">
-                  <input type="time" className="input py-1" value={form.startTime} onChange={e => setForm({...form, startTime: e.target.value})} />
-                  <input type="time" className="input py-1" value={form.endTime} onChange={e => setForm({...form, endTime: e.target.value})} />
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Code & Name</label>
+                  <div className="flex gap-2">
+                    <input className="input w-20 py-1" placeholder="Code" value={form.code} onChange={e => setForm({...form, code: e.target.value})} />
+                    <input className="input flex-1 py-1" placeholder="Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                  </div>
                 </div>
-                <div className="flex justify-end gap-2">
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Times</label>
+                    <div className="flex items-center gap-2">
+                      <input type="time" className="input py-1" value={form.startTime} onChange={e => setForm({...form, startTime: e.target.value})} />
+                      <input type="time" className="input py-1" value={form.endTime} onChange={e => setForm({...form, endTime: e.target.value})} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Color</label>
+                    <input type="color" className="w-10 h-10 rounded block border-none" value={form.color} onChange={e => setForm({...form, color: e.target.value})} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Grace Late (min)</label>
+                    <input type="number" className="input py-1 w-full" value={form.graceLate} onChange={e => setForm({...form, graceLate: parseInt(e.target.value)})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Grace Early (min)</label>
+                    <input type="number" className="input py-1 w-full" value={form.graceEarly} onChange={e => setForm({...form, graceEarly: parseInt(e.target.value)})} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
                   <button onClick={cancelEdit} className="btn bg-gray-100 px-3 py-1 text-sm"><X className="w-4 h-4" /></button>
                   <button onClick={save} disabled={loading} className="btn btn-primary px-3 py-1 text-sm"><Save className="w-4 h-4" /></button>
                 </div>

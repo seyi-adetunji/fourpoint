@@ -9,7 +9,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { code, name, startTime, endTime, graceLate, graceEarly } = body;
+    const { code, name, startTime, endTime, color, graceLate, graceEarly } = body;
 
     const template = await prisma.shiftTemplate.update({
       where: { id },
@@ -18,6 +18,7 @@ export async function PUT(
         name,
         startTime,
         endTime,
+        color,
         graceLate,
         graceEarly,
       },

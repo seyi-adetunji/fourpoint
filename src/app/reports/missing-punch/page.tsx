@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+export const dynamic = "force-dynamic";
 import { Fingerprint, Filter } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { StatusBadge } from "@/components/ui/StatusBadge";

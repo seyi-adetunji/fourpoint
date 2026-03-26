@@ -1,4 +1,6 @@
 import prisma from "@/lib/prisma";
+export const dynamic = "force-dynamic";
+import { Settings, Shield, Clock } from "lucide-react";
 import ManageShiftTemplates from "@/components/ManageShiftTemplates";
 import ManageDepartments from "@/components/ManageDepartments";
 

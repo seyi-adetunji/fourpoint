@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { Building2, Users } from "lucide-react";
+export const dynamic = "force-dynamic";
 
 export default async function DepartmentsPage() {
   const departments = await prisma.department.findMany({

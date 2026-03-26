@@ -3,6 +3,8 @@ import { Clock, Filter } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
+export const dynamic = "force-dynamic";
+
 export default async function EarlyExitReport({
   searchParams,
 }: {

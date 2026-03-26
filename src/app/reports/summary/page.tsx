@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
-import { BarChart3, Filter } from "lucide-react";
+export const dynamic = "force-dynamic";
+import { BarChart3, Users, Clock, AlertTriangle, Filter } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 export default async function SummaryReport({

@@ -3,6 +3,8 @@ import { format, startOfDay } from "date-fns";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Download } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function LateComingReport({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
   const startStr = params?.start as string | undefined;

@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { format, startOfDay } from "date-fns";
+export const dynamic = "force-dynamic";
 import { Search, Download } from "lucide-react";
 
 export default async function AttendancePunchesPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {

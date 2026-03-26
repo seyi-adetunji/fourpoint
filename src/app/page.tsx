@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+export const dynamic = "force-dynamic";
 import { authOptions } from "@/lib/auth";
 import { AdminDashboard } from "@/components/dashboards/AdminDashboard";
 import { HODDashboard } from "@/components/dashboards/HODDashboard";

@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+export const dynamic = "force-dynamic";
 import { LayoutGrid, Filter } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 

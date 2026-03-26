@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { 
-  ClipboardList, Users, Clock, Timer, AlertTriangle, 
+export const dynamic = "force-dynamic";
+import {
+  ClipboardList, Users, Clock, Timer, AlertTriangle,
   CalendarOff, Layers, Fingerprint, UserX, BarChart3, Building2, FileText
 } from "lucide-react";
 

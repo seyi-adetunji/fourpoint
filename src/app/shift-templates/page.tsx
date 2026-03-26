@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+export const dynamic = "force-dynamic";
 import ShiftTemplateManager from "@/components/settings/ShiftTemplateManager";
 
 export default async function ShiftTemplatesPage() {

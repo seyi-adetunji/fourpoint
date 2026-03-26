@@ -1,7 +1,9 @@
 import prisma from "@/lib/prisma";
 import { format, startOfDay } from "date-fns";
+import { AlertCircle, Filter, Download } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Download } from "lucide-react";
+
+export const dynamic = "force-dynamic";
 
 export default async function ExceptionsReport({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
