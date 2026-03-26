@@ -8,16 +8,16 @@ export class EmployeeRepository {
     });
   }
 
-  static async findByCode(code: string): Promise<Employee | null> {
+  static async findByEmpCode(empCode: string): Promise<Employee | null> {
     return prisma.employee.findUnique({
-      where: { code },
+      where: { empCode },
     });
   }
 
   static async findAll(where?: Prisma.EmployeeWhereInput): Promise<Employee[]> {
     return prisma.employee.findMany({
       where,
-      orderBy: { name: "asc" },
+      orderBy: { fullName: "asc" },
     });
   }
 

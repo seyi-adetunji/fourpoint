@@ -101,19 +101,19 @@
     @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-primary text-white hover:bg-primary-dark shadow-sm;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-white hover:bg-primary-dark shadow-sm;
   }
   .btn-secondary {
-    @apply btn bg-white text-gray-700 border border-border hover:bg-gray-50 shadow-sm;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 border border-border hover:bg-gray-50 shadow-sm;
   }
   .btn-accent {
-    @apply btn bg-accent text-white hover:bg-accent-light shadow-sm;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-accent text-white hover:bg-accent-light shadow-sm;
   }
   .btn-danger {
-    @apply btn bg-danger text-white hover:bg-red-700 shadow-sm;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-danger text-white hover:bg-red-700 shadow-sm;
   }
   .btn-ghost {
-    @apply btn bg-transparent text-gray-600 hover:bg-gray-100;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-transparent text-gray-600 hover:bg-gray-100;
   }
   .btn-sm {
     @apply px-3 py-1.5 text-xs rounded-lg;
@@ -134,31 +134,31 @@
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold;
   }
   .badge-present {
-    @apply badge bg-emerald-50 text-emerald-700 border border-emerald-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200;
   }
   .badge-late {
-    @apply badge bg-amber-50 text-amber-700 border border-amber-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200;
   }
   .badge-absent {
-    @apply badge bg-red-50 text-red-700 border border-red-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200;
   }
   .badge-off {
-    @apply badge bg-gray-50 text-gray-600 border border-gray-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-50 text-gray-600 border border-gray-200;
   }
   .badge-exception {
-    @apply badge bg-yellow-50 text-yellow-700 border border-yellow-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-50 text-yellow-700 border border-yellow-200;
   }
   .badge-leave {
-    @apply badge bg-blue-50 text-blue-700 border border-blue-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200;
   }
   .badge-pending {
-    @apply badge bg-orange-50 text-orange-700 border border-orange-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200;
   }
   .badge-approved {
-    @apply badge bg-emerald-50 text-emerald-700 border border-emerald-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200;
   }
   .badge-rejected {
-    @apply badge bg-red-50 text-red-700 border border-red-200;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200;
   }
   
   /* ─── Page layout ─── */
@@ -177,7 +177,7 @@
   
   /* ─── KPI Metric Card ─── */
   .metric-card {
-    @apply card p-6 flex items-center justify-between;
+    @apply rounded-2xl border border-border bg-card shadow-sm overflow-hidden transition-all duration-200 p-6 flex items-center justify-between;
   }
   .metric-value {
     @apply text-3xl font-bold text-primary;

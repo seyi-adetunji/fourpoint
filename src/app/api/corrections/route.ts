@@ -17,13 +17,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Result ID and reason are required." }, { status: 400 });
     }
 
+    const result = await prisma.attendanceResult.findUnique({ where: { id: attendanceResultId } });
+    if (!result) {
+      return NextResponse.json({ message: "Invalid attendance record." }, { status: 400 });
+    }
+
     const correction = await prisma.attendanceCorrection.create({
       data: {
         employeeId: session.user.employeeId,
+        workDate: result.workDate,
         attendanceResultId,
         reason,
-        proposedTimeIn: proposedTimeIn ? new Date(proposedTimeIn) : null,
-        proposedTimeOut: proposedTimeOut ? new Date(proposedTimeOut) : null,
+        requestedByUserId: session.user.id,
         status: "PENDING"
       }
     });

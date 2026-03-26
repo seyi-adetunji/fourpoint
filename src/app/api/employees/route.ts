@@ -21,9 +21,9 @@ export async function POST(req: Request) {
     }
 
     const employee = await EmployeeService.createEmployee({
-      code,
-      name,
-      department: department || null
+      empCode: code,
+      fullName: name,
+      departmentId: department || null
     }, session.user.id);
 
     return NextResponse.json(employee, { status: 201 });

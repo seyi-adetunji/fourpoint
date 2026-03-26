@@ -12,14 +12,14 @@ export class EmployeeService {
   }
 
   static async createEmployee(data: Prisma.EmployeeCreateInput, auditUserId?: string) {
-    const existing = await EmployeeRepository.findByCode(data.code);
+    const existing = await EmployeeRepository.findByEmpCode(data.empCode);
     if (existing) {
-      throw new Error(`An employee with code ${data.code} already exists.`);
+      throw new Error(`An employee with code ${data.empCode} already exists.`);
     }
     const emp = await EmployeeRepository.create(data);
     
     if (auditUserId) {
-      await AuditService.logAction(auditUserId, "CREATE_EMPLOYEE", { employeeId: emp.id, code: emp.code });
+      await AuditService.logAction(auditUserId, "CREATE_EMPLOYEE", { employeeId: emp.id, empCode: emp.empCode });
     }
     
     return emp;
@@ -39,7 +39,7 @@ export class EmployeeService {
     const emp = await EmployeeRepository.delete(id);
     
     if (auditUserId) {
-      await AuditService.logAction(auditUserId, "DELETE_EMPLOYEE", { employeeId: emp.id, code: emp.code });
+      await AuditService.logAction(auditUserId, "DELETE_EMPLOYEE", { employeeId: emp.id, empCode: emp.empCode });
     }
     
     return emp;

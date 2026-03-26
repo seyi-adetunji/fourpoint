@@ -35,8 +35,13 @@ export async function POST(req: Request) {
       );
     }
 
+    const deptCode = name.trim().replace(/\s+/g, "").substring(0, 3).toUpperCase();
+
     const department = await prisma.department.create({
-      data: { name: name.trim() },
+      data: { 
+        name: name.trim(),
+        code: deptCode 
+      },
     });
 
     return NextResponse.json(department, { status: 201 });
