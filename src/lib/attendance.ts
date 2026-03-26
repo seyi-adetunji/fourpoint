@@ -1,8 +1,16 @@
 import { AttendancePunch, ShiftAssignment, AttendanceResult, AttendanceException } from '@prisma/client';
 import { differenceInMinutes, isBefore, isAfter, startOfDay, addMinutes, max, min, addDays } from 'date-fns';
 
-type ProcessResult = Omit<AttendanceResult, 'id' | 'createdAt' | 'updatedAt'> & {
-    exceptions: Omit<AttendanceException, 'id' | 'attendanceResultId' | 'createdAt' | 'updatedAt' | 'resolved' | 'resolvedBy' | 'resolvedAt'>[]
+type ProcessResult = {
+    employeeId: string;
+    shiftAssignmentId: string;
+    workDate: Date;
+    actualIn: Date | null;
+    actualOut: Date | null;
+    status: string;
+    lateMinutes: number;
+    earlyExitMinutes: number;
+    exceptions: any[];
 };
 
 /**
@@ -23,7 +31,7 @@ export function processAttendance(
     const sortedAssignments = [...assignments].sort((a, b) => a.sequence - b.sequence);
     
     // Sort punches chronologically
-    const sortedPunches = [...punches].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    const sortedPunches = [...punches].sort((a, b) => a.punchTime.getTime() - b.punchTime.getTime());
 
     let remainingPunches = [...sortedPunches];
 
@@ -34,10 +42,10 @@ export function processAttendance(
         const [startH, startM] = template.startTime.split(':').map(Number);
         const [endH, endM] = template.endTime.split(':').map(Number);
         
-        const expectedStart = new Date(assignment.date);
+        const expectedStart = new Date(assignment.workDate);
         expectedStart.setHours(startH, startM, 0, 0);
 
-        let expectedEnd = new Date(assignment.date);
+        let expectedEnd = new Date(assignment.workDate);
         expectedEnd.setHours(endH, endM, 0, 0);
 
         if (template.code === 'N' || expectedEnd.getTime() < expectedStart.getTime()) {
@@ -56,7 +64,7 @@ export function processAttendance(
             windowEnd.setHours(23, 0, 0, 0);
         } else if (template.code === 'N') {
             windowStart.setHours(21, 0, 0, 0);
-            windowEnd = addDays(new Date(assignment.date), 1);
+            windowEnd = addDays(new Date(assignment.workDate), 1);
             windowEnd.setHours(8, 0, 0, 0);
         } else {
             // Generic 2-hour window before/after for unknown shifts
@@ -66,24 +74,25 @@ export function processAttendance(
 
         // Find relevant punches within the window
         const windowPunches = remainingPunches.filter(p => 
-            p.timestamp.getTime() >= windowStart.getTime() && 
-            p.timestamp.getTime() <= windowEnd.getTime()
+            p.punchTime.getTime() >= windowStart.getTime() && 
+            p.punchTime.getTime() <= windowEnd.getTime()
         );
 
-        // Find the earliest IN and latest OUT in the window
-        const punchInRaw = windowPunches.find(p => p.type === 'IN');
-        const punchOutRaw = [...windowPunches].reverse().find(p => p.type === 'OUT');
+        // Find the earliest and latest punch in the window
+        // We no longer rely on a 'type' field as it doesn't exist in the schema
+        const punchInRaw = windowPunches.length > 0 ? windowPunches[0] : null;
+        const punchOutRaw = windowPunches.length > 1 ? windowPunches[windowPunches.length - 1] : null;
 
         // Consume used punches so they aren't reused for the 2nd shift of a double shift
         if (punchInRaw) remainingPunches = remainingPunches.filter(p => p.id !== punchInRaw.id);
         if (punchOutRaw) remainingPunches = remainingPunches.filter(p => p.id !== punchOutRaw.id);
 
-        const punchIn = punchInRaw?.timestamp || null;
-        const punchOut = punchOutRaw?.timestamp || null;
+        const punchIn = punchInRaw?.punchTime || null;
+        const punchOut = punchOutRaw?.punchTime || null;
 
         // Calculate late/early
-        let minutesLate = 0;
-        let minutesEarly = 0;
+        let lateMinutes = 0;
+        let earlyExitMinutes = 0;
         let status = 'PRESENT';
         const exceptions: any[] = [];
 
@@ -91,7 +100,7 @@ export function processAttendance(
             status = 'NO_SHOW';
             exceptions.push({
                 employeeId: assignment.employeeId,
-                date: assignment.date,
+                workDate: assignment.workDate,
                 type: 'NO_SHOW',
                 reason: 'No punches recorded for assigned shift'
             });
@@ -99,31 +108,31 @@ export function processAttendance(
             status = 'MISSING_PUNCH';
             exceptions.push({
                 employeeId: assignment.employeeId,
-                date: assignment.date,
+                workDate: assignment.workDate,
                 type: 'MISSING_PUNCH',
                 reason: `Missing ${!punchIn ? 'IN' : 'OUT'} punch`
             });
         } else {
             // Both punches exist, calculate metrics
             if (isAfter(punchIn, addMinutes(expectedStart, template.graceLate))) {
-                minutesLate = differenceInMinutes(punchIn, expectedStart);
+                lateMinutes = differenceInMinutes(punchIn, expectedStart);
                 status = 'LATE';
                 exceptions.push({
                     employeeId: assignment.employeeId,
-                    date: assignment.date,
+                    workDate: assignment.workDate,
                     type: 'LATE_ARRIVAL',
-                    reason: `${minutesLate} minutes late`
+                    reason: `${lateMinutes} minutes late`
                 });
             }
 
             if (isBefore(punchOut, addMinutes(expectedEnd, -template.graceEarly))) {
-                minutesEarly = differenceInMinutes(expectedEnd, punchOut);
+                earlyExitMinutes = differenceInMinutes(expectedEnd, punchOut);
                 status = status === 'LATE' ? 'LATE_AND_EARLY' : 'EARLY_EXIT';
                 exceptions.push({
                     employeeId: assignment.employeeId,
-                    date: assignment.date,
+                    workDate: assignment.workDate,
                     type: 'EARLY_EXIT',
-                    reason: `${minutesEarly} minutes early`
+                    reason: `${earlyExitMinutes} minutes early`
                 });
             }
         }
@@ -131,12 +140,12 @@ export function processAttendance(
         results.push({
             employeeId: assignment.employeeId,
             shiftAssignmentId: assignment.id,
-            date: assignment.date,
-            punchIn,
-            punchOut,
+            workDate: assignment.workDate,
+            actualIn: punchIn,
+            actualOut: punchOut,
             status,
-            minutesLate,
-            minutesEarly,
+            lateMinutes,
+            earlyExitMinutes,
             exceptions
         });
     }

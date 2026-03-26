@@ -126,7 +126,7 @@ export default function EditShiftModal({ assignment }: { assignment: AssignmentW
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Edit Shift Assignment</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {assignment.employee.name} — {new Date(assignment.date).toDateString()}
+                  {assignment.employee.fullName} — {new Date(assignment.workDate).toDateString()}
                 </p>
               </div>
               <button

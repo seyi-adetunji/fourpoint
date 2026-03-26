@@ -33,17 +33,17 @@ export default async function PortalPage() {
     prisma.shiftAssignment.findMany({
       where: {
         employeeId: employeeId,
-        date: { gte: today, lte: oneWeekLater }
+        workDate: { gte: today, lte: oneWeekLater }
       },
       include: { shiftTemplate: true },
-      orderBy: [{ date: "asc" }, { sequence: "asc" }]
+      orderBy: [{ workDate: "asc" }, { sequence: "asc" }]
     }),
     prisma.attendanceResult.findMany({
       where: {
         employeeId: employeeId,
-        date: { gte: oneWeekAgo, lte: today }
+        workDate: { gte: oneWeekAgo, lte: today }
       },
-      orderBy: { date: "desc" }
+      orderBy: { workDate: "desc" }
     })
   ]);
 
@@ -60,7 +60,7 @@ export default async function PortalPage() {
               upcomingShifts.map(shift => (
                 <div key={shift.id} className="p-4 px-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
                   <div>
-                    <div className="font-medium text-primary">{format(shift.date, "EEEE, MMM d, yyyy")}</div>
+                    <div className="font-medium text-primary">{format(shift.workDate, "EEEE, MMM d, yyyy")}</div>
                     <div className="text-sm text-gray-500 mt-0.5">{shift.shiftTemplate.name}</div>
                   </div>
                   <div className="text-sm font-semibold text-gray-900 border rounded py-1 px-3 bg-white">
@@ -85,8 +85,8 @@ export default async function PortalPage() {
                 
                 return (
                   <div key={record.id} className="p-4 px-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                    <div className="font-medium text-primary">{format(record.date, "EEE, MMM d")}</div>
-                    <StatusBadge status={statusType} label={record.status.replace("_", " ")} />
+                    <div className="font-medium text-primary">{format(record.workDate, "EEE, MMM d")}</div>
+                    <StatusBadge status={record.status} />
                   </div>
                 );
               })

@@ -6,8 +6,8 @@ import { X, Loader2, Save, Trash2, Edit2 } from "lucide-react";
 
 interface Employee {
   id: string;
-  name: string;
-  department: string | null;
+  fullName: string;
+  departmentId: string | null;
 }
 
 export default function EditEmployeeModal({ employee }: { employee: Employee }) {
@@ -29,15 +29,15 @@ export default function EditEmployeeModal({ employee }: { employee: Employee }) 
   });
 
   const [form, setForm] = useState({
-    name: employee.name,
-    department: employee.department || "",
+    fullName: employee.fullName,
+    departmentId: employee.departmentId || "",
   });
 
   const handleOpen = () => {
     setOpen(true);
     setForm({
-      name: employee.name,
-      department: employee.department || "",
+      fullName: employee.fullName,
+      departmentId: employee.departmentId || "",
     });
     setError(null);
   };
@@ -57,8 +57,8 @@ export default function EditEmployeeModal({ employee }: { employee: Employee }) 
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name,
-          department: form.department || null,
+          fullName: form.fullName,
+          departmentId: form.departmentId || null,
         }),
       });
 
@@ -143,8 +143,8 @@ export default function EditEmployeeModal({ employee }: { employee: Employee }) 
                 <label className="text-sm font-medium text-gray-700">Full Name</label>
                 <input
                   type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  value={form.fullName}
+                  onChange={(e) => setForm({ ...form, fullName: e.target.value })}
                   required
                   disabled={loading || deleting}
                   className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
@@ -154,14 +154,14 @@ export default function EditEmployeeModal({ employee }: { employee: Employee }) 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-gray-700">Department</label>
                 <select
-                  value={form.department}
-                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  value={form.departmentId}
+                  onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
                   disabled={loading || deleting}
                   className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary bg-white"
                 >
                   <option value="">Unassigned</option>
                   {departments.map((dept) => (
-                    <option key={dept.id} value={dept.name}>{dept.name}</option>
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
                   ))}
                 </select>
               </div>

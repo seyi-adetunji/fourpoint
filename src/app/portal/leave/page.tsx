@@ -18,6 +18,7 @@ export default async function LeavePage() {
 
   const pastRequests = await prisma.leaveRequest.findMany({
     where: { employeeId: employeeId },
+    include: { leaveType: true },
     orderBy: { createdAt: "desc" }
   });
 
@@ -52,12 +53,12 @@ export default async function LeavePage() {
                         {format(req.startDate, "MMM d")} - {format(req.endDate, "MMM d, yyyy")}
                       </div>
                       <div className="text-sm text-gray-500 mt-0.5 space-x-2">
-                        <span className="font-medium">{req.type}</span>
+                        <span className="font-medium">{req.leaveType.name}</span>
                         {req.reason && <span>• {req.reason}</span>}
                       </div>
                     </div>
                     <div>
-                      <StatusBadge status={statusType} label={req.status} />
+                      <StatusBadge status={req.status} size="sm" />
                     </div>
                   </div>
                 );

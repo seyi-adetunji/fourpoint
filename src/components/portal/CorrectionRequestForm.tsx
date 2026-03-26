@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { format } from "date-fns";
 
 export function CorrectionRequestForm({ recentResults }: { recentResults: any[] }) {
   const router = useRouter();
@@ -60,7 +61,7 @@ export function CorrectionRequestForm({ recentResults }: { recentResults: any[] 
           <option value="">-- Choose Record --</option>
           {recentResults.map(r => (
             <option key={r.id} value={r.id}>
-              {new Date(r.date).toLocaleDateString()} - {r.status}
+              {format(new Date(r.workDate), "MMM dd, yyyy")} - {r.status}
             </option>
           ))}
         </select>

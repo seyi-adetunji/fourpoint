@@ -26,9 +26,9 @@ export default async function CorrectionsPage() {
     prisma.attendanceResult.findMany({
       where: { 
         employeeId: employeeId,
-        date: { gte: thirtyDaysAgo }
+        workDate: { gte: thirtyDaysAgo }
       },
-      orderBy: { date: "desc" }
+      orderBy: { workDate: "desc" }
     })
   ]);
 
@@ -60,17 +60,17 @@ export default async function CorrectionsPage() {
                   <div key={req.id} className="p-4 px-6 flex items-start justify-between hover:bg-gray-50 transition-colors">
                     <div>
                       <div className="font-medium text-primary">
-                        {format(req.attendanceResult.date, "MMM d, yyyy")}
+                        {req.attendanceResult ? format(req.attendanceResult.workDate, "MMM d, yyyy") : "N/A"}
                       </div>
                       <div className="text-sm text-gray-500 mt-0.5 space-x-2">
-                        <span>Original: {req.attendanceResult.status.replace("_", " ")}</span>
+                        <span>Original: {req.attendanceResult?.status.replace("_", " ") || "N/A"}</span>
                       </div>
                       <div className="text-xs text-gray-400 mt-1 italic">
                         "{req.reason}"
                       </div>
                     </div>
                     <div>
-                      <StatusBadge status={statusType} label={req.status} />
+                      <StatusBadge status={req.status} />
                     </div>
                   </div>
                 );

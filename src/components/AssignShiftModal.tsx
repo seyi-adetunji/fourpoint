@@ -6,9 +6,9 @@ import { X, CalendarIcon, Loader2, CheckCircle2 } from "lucide-react";
 
 interface Employee {
   id: string;
-  code: string;
-  name: string;
-  department?: string | null;
+  empCode: string;
+  fullName: string;
+  department?: { name: string } | null;
 }
 
 interface ShiftTemplate {
@@ -152,7 +152,7 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
                   <option value="">Select employee…</option>
                   {employees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.name} ({emp.code}){emp.department ? ` — ${emp.department}` : ""}
+                      {emp.fullName} ({emp.empCode}){emp.department ? ` — ${emp.department.name}` : ""}
                     </option>
                   ))}
                 </select>
