@@ -1,14 +1,15 @@
 import prisma from "@/lib/prisma";
 import { Clock, Filter } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
-import StatusBadge from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export default async function EarlyExitReport({
   searchParams,
 }: {
-  searchParams: { date?: string; deptId?: string };
+  searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
-  const date = searchParams.date ? new Date(searchParams.date) : new Date();
+  const params = await searchParams;
+  const date = params.date ? new Date(params.date) : new Date();
   const start = startOfDay(date);
   const end = endOfDay(date);
 
@@ -17,13 +18,13 @@ export default async function EarlyExitReport({
   const results = await prisma.attendanceResult.findMany({
     where: {
       workDate: { gte: start, lte: end },
-      earlyExit: { gt: 0 },
-      ...(searchParams.deptId ? { employee: { departmentId: searchParams.deptId } } : {}),
+      earlyExitMinutes: { gt: 0 },
+      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
       employee: { include: { department: true } },
     },
-    orderBy: { earlyExit: "desc" },
+    orderBy: { earlyExitMinutes: "desc" },
   });
 
   return (
@@ -39,11 +40,11 @@ export default async function EarlyExitReport({
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Date</label>
-            <input type="date" name="date" defaultValue={searchParams.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
+            <input type="date" name="date" defaultValue={params.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>
-            <select name="deptId" className="input py-2" defaultValue={searchParams.deptId || ""}>
+            <select name="deptId" className="input py-2" defaultValue={params.deptId || ""}>
               <option value="">All Departments</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
@@ -62,7 +63,7 @@ export default async function EarlyExitReport({
               <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Employee</th>
               <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Department</th>
               <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Punch Out</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Early Exit</th>
+              <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -79,10 +80,10 @@ export default async function EarlyExitReport({
                     <p className="font-semibold text-primary">{r.employee.fullName}</p>
                     <p className="text-xs text-muted-foreground">{r.employee.empCode}</p>
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium">{r.employee.department.name}</td>
+                  <td className="px-6 py-4 text-sm font-medium">{r.employee.department?.name || "—"}</td>
                   <td className="px-6 py-4 text-sm font-mono">{r.actualOut ? format(r.actualOut, "HH:mm") : "N/A"}</td>
                   <td className="px-6 py-4">
-                    <StatusBadge status="warning" label={`${r.earlyExit} mins early`} />
+                    <StatusBadge status="EARLY_EXIT" />
                   </td>
                 </tr>
               ))

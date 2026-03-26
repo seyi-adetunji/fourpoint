@@ -8,6 +8,8 @@ export default withAuth(
     const path = req.nextUrl.pathname;
     const role = token?.role as string;
 
+    console.log(`[Middleware] Path: ${path}, Role: ${role}`);
+
     // Employee users can only access employee portal & profile routes
     if (role === "EMPLOYEE") {
       const allowedPrefixes = ["/employee", "/profile", "/api"];

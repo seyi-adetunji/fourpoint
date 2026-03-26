@@ -16,8 +16,9 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid credentials");
         }
 
+        const email = credentials.email.toLowerCase();
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email }
+          where: { email }
         });
 
         if (!user || !(await bcrypt.compare(credentials.password, user.passwordHash))) {

@@ -1,14 +1,15 @@
 import prisma from "@/lib/prisma";
 import { Fingerprint, Filter } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
-import StatusBadge from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export default async function MissingPunchReport({
   searchParams,
 }: {
-  searchParams: { date?: string; deptId?: string };
+  searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
-  const date = searchParams.date ? new Date(searchParams.date) : new Date();
+  const params = await searchParams;
+  const date = params.date ? new Date(params.date) : new Date();
   const start = startOfDay(date);
   const end = endOfDay(date);
 
@@ -18,19 +19,20 @@ export default async function MissingPunchReport({
     where: {
       workDate: { gte: start, lte: end },
       type: "MISSING_PUNCH",
-      ...(searchParams.deptId ? { employee: { departmentId: searchParams.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
       employee: { include: { department: true } },
     },
+    orderBy: { employee: { fullName: "asc" } },
   });
 
   return (
     <div className="page-container animate-fade-in">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Missing Punch Report</h1>
-          <p className="page-subtitle">Punches flagged for interpretation on {format(date, "PPP")}</p>
+          <h1 className="page-title">Missing Punch Audit</h1>
+          <p className="page-subtitle">Incomplete attendance logs requiring manual adjustment for {format(date, "PPP")}</p>
         </div>
       </div>
 
@@ -38,11 +40,11 @@ export default async function MissingPunchReport({
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Date</label>
-            <input type="date" name="date" defaultValue={searchParams.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
+            <input type="date" name="date" defaultValue={params.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>
-            <select name="deptId" className="input py-2" defaultValue={searchParams.deptId || ""}>
+            <select name="deptId" className="input py-2" defaultValue={params.deptId || ""}>
               <option value="">All Departments</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
@@ -54,29 +56,30 @@ export default async function MissingPunchReport({
         </form>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {exceptions.length === 0 ? (
           <div className="col-span-full card p-12 text-center text-muted-foreground">
-            No missing punches found for this selection.
+            No missing punches found for this date.
           </div>
         ) : (
           exceptions.map(e => (
-            <div key={e.id} className="card p-5 border-l-4 border-pink-500">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-pink-50">
-                  <Fingerprint className="w-5 h-5 text-pink-600" />
+            <div key={e.id} className="card p-5 border-t-4 border-orange-500">
+              <div className="flex items-start justify-between mb-2">
+                <div className="p-2 rounded-lg bg-orange-50 text-orange-600">
+                  <Fingerprint className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-semibold text-primary">{e.employee.fullName}</h3>
-                  <p className="text-xs text-muted-foreground">{e.employee.empCode} • {e.employee.department.name}</p>
+                <div className="text-right">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{e.employee.empCode}</p>
+                  <p className="text-[10px] text-muted-foreground">{e.employee.department?.name || "—"}</p>
                 </div>
               </div>
-              <p className="mt-3 text-sm text-gray-600 leading-relaxed italic">
-                "{e.description}"
+              <h3 className="font-bold text-primary text-lg mb-1">{e.employee.fullName}</h3>
+              <p className="text-xs text-muted-foreground italic mb-4">
+                "{e.details || "Incomplete punch record"}"
               </p>
               <div className="mt-4 flex items-center justify-between">
-                <StatusBadge status="warning" label="MISSING PUNCH" />
-                <StatusBadge status={e.status === "RESOLVED" ? "success" : "pending"} label={e.status} />
+                <StatusBadge status="MISSING_PUNCH" />
+                <StatusBadge status={e.status} />
               </div>
             </div>
           ))

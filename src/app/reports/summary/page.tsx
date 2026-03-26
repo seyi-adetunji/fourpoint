@@ -5,9 +5,10 @@ import { format, startOfMonth, endOfMonth } from "date-fns";
 export default async function SummaryReport({
   searchParams,
 }: {
-  searchParams: { empId?: string; month?: string };
+  searchParams: Promise<{ empId?: string; month?: string }>;
 }) {
-  const monthStr = searchParams.month || format(new Date(), "yyyy-MM");
+  const params = await searchParams;
+  const monthStr = params.month || format(new Date(), "yyyy-MM");
   const start = startOfMonth(new Date(monthStr));
   const end = endOfMonth(new Date(monthStr));
 
@@ -17,7 +18,7 @@ export default async function SummaryReport({
   const results = await prisma.attendanceResult.findMany({
     where: {
       workDate: { gte: start, lte: end },
-      ...(searchParams.empId ? { employeeId: searchParams.empId } : {}),
+      ...(params.empId ? { employeeId: params.empId } : {}),
     },
     include: {
       employee: { include: { department: true } },
@@ -37,7 +38,7 @@ export default async function SummaryReport({
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Employee</label>
-            <select name="empId" className="input py-2" defaultValue={searchParams.empId || ""}>
+            <select name="empId" className="input py-2" defaultValue={params.empId || ""}>
               <option value="">All Employees</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.fullName}</option>)}
             </select>
@@ -67,12 +68,12 @@ export default async function SummaryReport({
           </thead>
           <tbody className="divide-y divide-gray-200">
             {Object.values(results.reduce((acc: any, r) => {
-              if (!acc[r.employeeId]) acc[r.employeeId] = { name: r.employee.fullName, dept: r.employee.department.name, days: 0, late: 0, early: 0, ot: 0, work: 0 };
+              if (!acc[r.employeeId]) acc[r.employeeId] = { name: r.employee.fullName, dept: r.employee.department?.name || "N/A", days: 0, late: 0, early: 0, ot: 0, work: 0 };
               acc[r.employeeId].days += 1;
-              acc[r.employeeId].late += r.lateArrival;
-              acc[r.employeeId].early += r.earlyExit;
-              acc[r.employeeId].ot += r.overtime;
-              acc[r.employeeId].work += r.totalWorkMinutes;
+              acc[r.employeeId].late += r.lateMinutes;
+              acc[r.employeeId].early += r.earlyExitMinutes;
+              acc[r.employeeId].ot += r.overtimeMinutes;
+              acc[r.employeeId].work += r.workedMinutes;
               return acc;
             }, {})).map((emp: any) => (
               <tr key={emp.name}>

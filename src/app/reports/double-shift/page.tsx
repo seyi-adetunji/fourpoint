@@ -79,7 +79,7 @@ export default async function DoubleShiftReport({
                 </div>
                 <div>
                   <h3 className="font-semibold text-primary">{employee.fullName}</h3>
-                  <p className="text-xs text-muted-foreground">{employee.designation} • {employee.department.name}</p>
+                  <p className="text-xs text-muted-foreground">{employee.designation} • {employee.department?.name || "—"}</p>
                 </div>
               </div>
               <div className="flex gap-2">

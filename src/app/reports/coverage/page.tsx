@@ -5,9 +5,10 @@ import { format, startOfDay, endOfDay } from "date-fns";
 export default async function ShiftCoverageReport({
   searchParams,
 }: {
-  searchParams: { date?: string; deptId?: string };
+  searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
-  const date = searchParams.date ? new Date(searchParams.date) : new Date();
+  const params = await searchParams;
+  const date = params.date ? new Date(params.date) : new Date();
   const start = startOfDay(date);
   const end = endOfDay(date);
 
@@ -16,7 +17,7 @@ export default async function ShiftCoverageReport({
   const assignments = await prisma.shiftAssignment.findMany({
     where: {
       workDate: { gte: start, lte: end },
-      ...(searchParams.deptId ? { employee: { departmentId: searchParams.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
       employee: { include: { department: true } },
@@ -48,13 +49,13 @@ export default async function ShiftCoverageReport({
             <input 
               type="date" 
               name="date" 
-              defaultValue={searchParams.date || format(new Date(), "yyyy-MM-dd")}
+              defaultValue={params.date || format(new Date(), "yyyy-MM-dd")}
               className="input py-2" 
             />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>
-            <select name="deptId" className="input py-2" defaultValue={searchParams.deptId || ""}>
+            <select name="deptId" className="input py-2" defaultValue={params.deptId || ""}>
               <option value="">All Departments</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
@@ -83,7 +84,7 @@ export default async function ShiftCoverageReport({
                   <div key={a.id} className="card p-3 border-l-4" style={{ borderLeftColor: a.shiftTemplate.color }}>
                     <p className="font-semibold text-sm">{a.employee.fullName}</p>
                     <p className="text-xs text-muted-foreground">{a.employee.designation}</p>
-                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-medium">{a.employee.department.name}</p>
+                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-medium">{a.employee.department?.name || "—"}</p>
                   </div>
                 ))}
               </div>

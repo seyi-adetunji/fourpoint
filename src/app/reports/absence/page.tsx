@@ -1,14 +1,15 @@
 import prisma from "@/lib/prisma";
 import { UserX, Filter } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
-import StatusBadge from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export default async function AbsenceReport({
   searchParams,
 }: {
-  searchParams: { date?: string; deptId?: string };
+  searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
-  const date = searchParams.date ? new Date(searchParams.date) : new Date();
+  const params = await searchParams;
+  const date = params.date ? new Date(params.date) : new Date();
   const start = startOfDay(date);
   const end = endOfDay(date);
 
@@ -18,11 +19,12 @@ export default async function AbsenceReport({
     where: {
       workDate: { gte: start, lte: end },
       type: "NO_SHOW",
-      ...(searchParams.deptId ? { employee: { departmentId: searchParams.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
       employee: { include: { department: true } },
     },
+    orderBy: { employee: { fullName: "asc" } },
   });
 
   return (
@@ -30,7 +32,7 @@ export default async function AbsenceReport({
       <div className="page-header">
         <div>
           <h1 className="page-title">Absence Report</h1>
-          <p className="page-subtitle">No-show records for {format(date, "PPP")}</p>
+          <p className="page-subtitle">Unauthorized absences and no-shows for {format(date, "PPP")}</p>
         </div>
       </div>
 
@@ -38,11 +40,11 @@ export default async function AbsenceReport({
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Date</label>
-            <input type="date" name="date" defaultValue={searchParams.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
+            <input type="date" name="date" defaultValue={params.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>
-            <select name="deptId" className="input py-2" defaultValue={searchParams.deptId || ""}>
+            <select name="deptId" className="input py-2" defaultValue={params.deptId || ""}>
               <option value="">All Departments</option>
               {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
@@ -54,26 +56,27 @@ export default async function AbsenceReport({
         </form>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {exceptions.length === 0 ? (
           <div className="col-span-full card p-12 text-center text-muted-foreground">
-            No absences found for this selection.
+            No absences recorded for this date.
           </div>
         ) : (
           exceptions.map(e => (
-            <div key={e.id} className="card p-5 border-l-4 border-red-500">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-red-50">
-                  <UserX className="w-5 h-5 text-red-600" />
+            <div key={e.id} className="card p-5 border-t-4 border-red-500">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-2 rounded-lg bg-red-50 text-red-600">
+                  <UserX className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-semibold text-primary">{e.employee.fullName}</h3>
-                  <p className="text-xs text-muted-foreground">{e.employee.designation}</p>
-                </div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{e.employee.empCode}</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-primary text-lg">{e.employee.fullName}</h3>
+                <p className="text-sm text-muted-foreground mb-4">{e.employee.designation || "Staff"}</p>
               </div>
               <div className="mt-4 flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-500 uppercase">{e.employee.department.name}</span>
-                <StatusBadge status="danger" label="NO SHOW" />
+                <span className="text-xs font-medium text-gray-500 uppercase">{e.employee.department?.name || "—"}</span>
+                <StatusBadge status="NO_SHOW" />
               </div>
             </div>
           ))
