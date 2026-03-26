@@ -48,3 +48,4 @@ export function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
     </span>
   );
 }
+export default StatusBadge;

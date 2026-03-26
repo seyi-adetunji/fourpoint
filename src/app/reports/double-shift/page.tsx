@@ -5,9 +5,10 @@ import { format, startOfDay, endOfDay } from "date-fns";
 export default async function DoubleShiftReport({
   searchParams,
 }: {
-  searchParams: { date?: string; deptId?: string };
+  searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
-  const date = searchParams.date ? new Date(searchParams.date) : new Date();
+  const params = await searchParams;
+  const date = params.date ? new Date(params.date) : new Date();
   const start = startOfDay(date);
   const end = endOfDay(date);
 
@@ -17,7 +18,7 @@ export default async function DoubleShiftReport({
   const assignments = await prisma.shiftAssignment.findMany({
     where: {
       workDate: { gte: start, lte: end },
-      ...(searchParams.deptId ? { employee: { departmentId: searchParams.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
       employee: { include: { department: true } },
