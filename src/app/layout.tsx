@@ -1,21 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { SidebarClient } from "@/components/Sidebar";
+import { Providers } from "@/components/Providers";
+import { TopBar } from "@/components/TopBar";
 
 export const metadata: Metadata = {
-  title: "Four Points Attendance",
-  description: "Hotel Attendance System for Four Points by Sheraton",
+  title: "WorkforceOps — Hotel Workforce Manager",
+  description: "Enterprise hotel workforce scheduling, attendance, and reporting platform by Four Points.",
 };
 
 export default function RootLayout({
@@ -25,15 +16,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto bg-background">
-            <div className="p-8">
-              {children}
+      <body>
+        <Providers>
+          <div className="flex h-screen overflow-hidden">
+            <SidebarClient />
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <TopBar />
+              <main className="flex-1 overflow-y-auto">
+                <div className="p-6 lg:p-8">
+                  {children}
+                </div>
+              </main>
             </div>
-          </main>
-        </div>
+          </div>
+        </Providers>
       </body>
     </html>
   );

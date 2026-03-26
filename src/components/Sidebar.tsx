@@ -1,91 +1,215 @@
-import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { LogoutButton } from "./LogoutButton";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Calendar, 
-  Clock, 
-  AlertCircle,
-  Settings,
-  UserCircle
-} from "lucide-react";
+"use client";
 
-export async function Sidebar() {
-  const session = await getServerSession(authOptions);
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import { 
+  LayoutDashboard, Users, Calendar, Clock, AlertTriangle, 
+  Building2, Layers, CalendarOff, BarChart3, Settings,
+  LogOut, ChevronDown, ChevronRight, Fingerprint, ClipboardCheck,
+  FileEdit, UserCircle
+} from "lucide-react";
+import { useState } from "react";
+
+// Icon map to resolve string icon names
+const iconMap: Record<string, any> = {
+  LayoutDashboard, Users, Calendar, Clock, AlertTriangle,
+  Building2, Layers, CalendarOff, BarChart3, Settings,
+  Fingerprint, ClipboardCheck, FileEdit, UserCircle,
+};
+
+interface NavItemConfig {
+  name: string;
+  href: string;
+  icon: string;
+  children?: NavItemConfig[];
+}
+
+// Admin/Manager navigation
+const adminNav: NavItemConfig[] = [
+  { name: "Dashboard", href: "/", icon: "LayoutDashboard" },
+  { name: "Employees", href: "/employees", icon: "Users" },
+  { name: "Departments", href: "/departments", icon: "Building2" },
+  { name: "Shift Templates", href: "/shift-templates", icon: "Layers" },
+  { name: "Shift Assignments", href: "/shifts", icon: "Calendar" },
+  { 
+    name: "Attendance", href: "/attendance", icon: "Clock",
+    children: [
+      { name: "Punches", href: "/attendance/punches", icon: "Fingerprint" },
+      { name: "Results", href: "/attendance/results", icon: "ClipboardCheck" },
+      { name: "Exceptions", href: "/attendance/exceptions", icon: "AlertTriangle" },
+    ],
+  },
+  { name: "Leave", href: "/leave", icon: "CalendarOff" },
+  { name: "Reports", href: "/reports", icon: "BarChart3" },
+];
+
+// Employee-only navigation
+const employeeNav: NavItemConfig[] = [
+  { name: "My Dashboard", href: "/employee/dashboard", icon: "LayoutDashboard" },
+  { name: "My Shifts", href: "/employee/shifts", icon: "Calendar" },
+  { name: "My Attendance", href: "/employee/attendance", icon: "Clock" },
+  { name: "Leave Requests", href: "/employee/leave", icon: "CalendarOff" },
+  { name: "Corrections", href: "/employee/corrections", icon: "FileEdit" },
+];
+
+function getNavForRole(role: string): NavItemConfig[] {
+  switch (role) {
+    case "SUPER_ADMIN":
+    case "HR_ADMIN":
+      return adminNav;
+    case "HOD":
+      return adminNav.filter(item => 
+        !["Departments", "Shift Templates"].includes(item.name)
+      );
+    case "SUPERVISOR":
+      return adminNav.filter(item => 
+        ["Dashboard", "Employees", "Shift Assignments", "Attendance", "Reports"].includes(item.name)
+      );
+    case "EMPLOYEE":
+      return employeeNav;
+    default:
+      return employeeNav;
+  }
+}
+
+function NavItem({ item, depth = 0 }: { item: NavItemConfig; depth?: number }) {
+  const pathname = usePathname();
+  const [expanded, setExpanded] = useState(
+    item.children?.some(c => pathname.startsWith(c.href)) || false
+  );
+  const Icon = iconMap[item.icon] || LayoutDashboard;
+  const hasChildren = item.children && item.children.length > 0;
   
-  if (!session || !session.user) {
-    return null; // Do not render sidebar for unauthenticated users (e.g., login page)
+  const isActive = hasChildren 
+    ? item.children!.some(c => pathname === c.href || pathname.startsWith(c.href + "/"))
+    : pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/"));
+
+  if (hasChildren) {
+    return (
+      <div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group
+            ${isActive 
+              ? "bg-sidebar-active text-sidebar-active-text" 
+              : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-white"
+            }`}
+        >
+          <Icon className={`w-[18px] h-[18px] flex-shrink-0 ${isActive ? "text-sidebar-active-text" : "text-gray-500 group-hover:text-gray-300"}`} />
+          <span className="flex-1 text-left">{item.name}</span>
+          {expanded 
+            ? <ChevronDown className="w-4 h-4 text-gray-500" /> 
+            : <ChevronRight className="w-4 h-4 text-gray-500" />
+          }
+        </button>
+        {expanded && (
+          <div className="ml-4 mt-1 space-y-0.5 animate-fade-in">
+            {item.children!.map(child => (
+              <NavItem key={child.href} item={child} depth={depth + 1} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
-  const role = session.user.role;
+  return (
+    <Link
+      href={item.href}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group
+        ${isActive 
+          ? "bg-sidebar-active text-sidebar-active-text" 
+          : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-white"
+        }
+        ${depth > 0 ? "text-[13px] py-2 pl-4" : ""}`}
+    >
+      <Icon className={`w-[18px] h-[18px] flex-shrink-0 ${isActive ? "text-sidebar-active-text" : "text-gray-500 group-hover:text-gray-300"}`} />
+      <span>{item.name}</span>
+      {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-accent" />}
+    </Link>
+  );
+}
 
-  // Define full list of possible routes
-  const allRoutes = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["SUPER_ADMIN", "HR_ADMIN", "HOD", "SUPERVISOR"] },
-    { name: "My Portal", href: "/portal", icon: UserCircle, roles: ["EMPLOYEE", "SUPERVISOR", "HOD", "HR_ADMIN"] },
-    { name: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN", "HR_ADMIN", "HOD"] },
-    { name: "Shift Assignments", href: "/shifts", icon: Calendar, roles: ["SUPER_ADMIN", "HR_ADMIN", "HOD"] },
-    { name: "Attendance", href: "/attendance", icon: Clock, roles: ["SUPER_ADMIN", "HR_ADMIN", "HOD", "SUPERVISOR"] },
-    { name: "Exceptions", href: "/exceptions", icon: AlertCircle, roles: ["SUPER_ADMIN", "HR_ADMIN", "HOD"] },
-  ];
+export function SidebarClient() {
+  const { data: session } = useSession();
+  const pathname = usePathname();
 
-  // Filter based on user role
-  const allowedRoutes = allRoutes.filter(route => route.roles.includes(role as string));
+  if (!session?.user) return null;
+  // Hide sidebar on login page  
+  if (pathname === "/login") return null;
+
+  const role = (session.user as any).role || "EMPLOYEE";
+  const navItems = getNavForRole(role);
+  const showSettings = ["SUPER_ADMIN", "HR_ADMIN"].includes(role);
 
   return (
-    <div className="flex flex-col w-64 h-screen bg-sidebar border-r border-sidebar-border text-sidebar-foreground">
-      <div className="flex items-center justify-center h-20 border-b border-sidebar-border relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-accent" />
-        <h1 className="text-xl font-bold tracking-tight text-primary flex flex-col items-center">
-          <span className="uppercase text-sm tracking-widest text-[#8a8d91] font-medium">Four Points</span>
-          <span className="text-lg">Attendance</span>
-        </h1>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto py-6">
-        <div className="px-4 mb-6">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Logged in as</p>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-              {session.user.name?.[0]?.toUpperCase() || "U"}
-            </div>
-            <div className="flex flex-col overflow-hidden">
-              <span className="text-sm font-medium truncate">{session.user.name}</span>
-              <span className="text-xs text-secondary truncate">{role.replace("_", " ")}</span>
-            </div>
+    <div className="flex flex-col w-64 h-screen bg-sidebar border-r border-sidebar-border flex-shrink-0">
+      {/* ─── Logo / Branding ─── */}
+      <div className="flex items-center h-[72px] px-5 border-b border-sidebar-border">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center">
+            <span className="text-accent font-bold text-lg">W</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-white font-bold text-[15px] tracking-tight leading-tight">WorkforceOps</span>
+            <span className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">Hotel Manager</span>
           </div>
         </div>
-
-        <nav className="flex flex-col gap-2 px-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 mt-4 text-left">Main Menu</p>
-          {allowedRoutes.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link 
-                key={item.href} 
-                href={item.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors hover:bg-primary/5 hover:text-primary group"
-              >
-                <Icon className="w-5 h-5 text-[#8a8d91] group-hover:text-primary transition-colors" />
-                {item.name}
-              </Link>
-            );
-          })}
-        </nav>
+      </div>
+      
+      {/* ─── User info ─── */}
+      <div className="px-4 py-4 border-b border-sidebar-border">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-primary-light flex items-center justify-center text-white font-bold text-sm ring-2 ring-accent/30">
+            {session.user.name?.[0]?.toUpperCase() || "U"}
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <span className="text-sm font-semibold text-white truncate">{session.user.name}</span>
+            <span className="text-[11px] text-accent font-medium">{role.replace(/_/g, " ")}</span>
+          </div>
+        </div>
       </div>
 
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="flex flex-col gap-2">
-          {["SUPER_ADMIN", "HR_ADMIN"].includes(role as string) && (
-            <Link href="/settings" className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-[#8a8d91] hover:bg-primary/5 hover:text-primary transition-colors w-full">
-              <Settings className="w-5 h-5" />
-              Settings
-            </Link>
-          )}
-          <LogoutButton />
-        </div>
+      {/* ─── Navigation ─── */}
+      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-3 mb-3">
+          {role === "EMPLOYEE" ? "Self Service" : "Operations"}
+        </p>
+        {navItems.map(item => (
+          <NavItem key={item.href} item={item} />
+        ))}
+      </div>
+
+      {/* ─── Footer ─── */}
+      <div className="p-3 border-t border-sidebar-border space-y-1">
+        {showSettings && (
+          <Link
+            href="/settings"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+              ${pathname === "/settings" 
+                ? "bg-sidebar-active text-sidebar-active-text" 
+                : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-white"
+              }`}
+          >
+            <Settings className="w-[18px] h-[18px] text-gray-500" />
+            Settings
+          </Link>
+        )}
+        <Link
+          href="/profile"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-sidebar-foreground hover:bg-sidebar-hover hover:text-white transition-all duration-200"
+        >
+          <UserCircle className="w-[18px] h-[18px] text-gray-500" />
+          Profile
+        </Link>
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all duration-200"
+        >
+          <LogOut className="w-[18px] h-[18px]" />
+          Sign Out
+        </button>
       </div>
     </div>
   );

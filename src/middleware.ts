@@ -1,22 +1,34 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
+import { ROUTE_PERMISSIONS, hasAnyPermission } from "@/lib/rbac";
 
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
     const path = req.nextUrl.pathname;
+    const role = token?.role as string;
 
-    // Simple Role-Based Protection Example
-    // If user is trying to access /settings, restrict to SUPER_ADMIN or HR_ADMIN
-    if (path.startsWith("/settings")) {
-      if (token?.role !== "SUPER_ADMIN" && token?.role !== "HR_ADMIN") {
-        return NextResponse.redirect(new URL("/unauthorized", req.url));
+    // Employee users can only access employee portal & profile routes
+    if (role === "EMPLOYEE") {
+      const allowedPrefixes = ["/employee", "/profile", "/api"];
+      const isAllowed = allowedPrefixes.some(prefix => path.startsWith(prefix));
+      if (!isAllowed && path !== "/") {
+        return NextResponse.redirect(new URL("/employee/dashboard", req.url));
+      }
+      // Redirect root to employee dashboard
+      if (path === "/") {
+        return NextResponse.redirect(new URL("/employee/dashboard", req.url));
       }
     }
 
-    // Similarly protect /employees from standard employees
-    if (path.startsWith("/employees") && token?.role === "EMPLOYEE") {
-        return NextResponse.redirect(new URL("/portal", req.url));
+    // Check route permissions for protected routes
+    for (const [routePattern, permissions] of Object.entries(ROUTE_PERMISSIONS)) {
+      if (path.startsWith(routePattern)) {
+        if (!hasAnyPermission(role, permissions)) {
+          return NextResponse.redirect(new URL("/unauthorized", req.url));
+        }
+        break;
+      }
     }
 
     return NextResponse.next();

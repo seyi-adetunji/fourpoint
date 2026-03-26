@@ -16,10 +16,9 @@ export default async function DashboardPage() {
 
   if (role === "SUPER_ADMIN" || role === "HR_ADMIN") {
     return <AdminDashboard session={session} />;
-  } else if (role === "HOD") {
+  } else if (role === "HOD" || role === "SUPERVISOR") {
     return <HODDashboard session={session} />;
   } else {
-    // SUPERVISOR and EMPLOYEE
     return <EmployeeDashboard session={session} />;
   }
 }

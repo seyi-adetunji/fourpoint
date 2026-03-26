@@ -1,117 +1,101 @@
 import prisma from "@/lib/prisma";
 import { format, startOfDay } from "date-fns";
-import { Filter } from "lucide-react";
-import AssignShiftModal from "@/components/AssignShiftModal";
-import EditShiftModal from "@/components/EditShiftModal";
-import ShiftFilter from "@/components/ShiftFilter";
 
 export default async function ShiftsPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
-  // Await searchParams before accessing properties (Next.js 15 recommendation)
   const resolvedSearchParams = await searchParams;
-  
   const selectedDate = resolvedSearchParams?.date ? startOfDay(new Date(resolvedSearchParams.date as string)) : startOfDay(new Date());
   const selectedEmployeeId = resolvedSearchParams?.employee as string | undefined;
+  const deptId = resolvedSearchParams?.department as string | undefined;
 
-  const [shiftAssignments, employees] = await Promise.all([
+  const [shiftAssignments, employees, departments] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where: {
-        ...(resolvedSearchParams?.date ? { date: selectedDate } : { date: { gte: selectedDate } }),
-        ...(selectedEmployeeId && { employeeId: selectedEmployeeId })
+        ...(resolvedSearchParams?.date ? { workDate: selectedDate } : { workDate: { gte: selectedDate } }),
+        ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
+        ...(deptId && { employee: { departmentId: deptId } }),
       },
       include: {
-        employee: true,
+        employee: { include: { department: true } },
         shiftTemplate: true,
       },
       orderBy: [
-        { date: "asc" },
+        { workDate: "asc" },
         { sequence: "asc" },
-        { employee: { name: "asc" } },
+        { employee: { fullName: "asc" } },
       ],
-      take: 100,
+      take: 200,
     }),
     prisma.employee.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, code: true, name: true, department: true },
+      where: { isActive: true },
+      orderBy: { fullName: "asc" },
+      select: { id: true, empCode: true, fullName: true },
     }),
+    prisma.department.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto flex flex-col items-stretch">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="page-container animate-fade-in">
+      <div className="page-header">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            Shift Assignments
-          </h1>
-          <p className="text-gray-500 mt-2">
-            Manage upcoming employee schedules and rotas.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <ShiftFilter employees={employees} />
-          {/* Interactive Assign Shift Modal */}
-          <AssignShiftModal employees={employees} />
+          <h1 className="page-title">Shift Assignments</h1>
+          <p className="page-subtitle">Manage rota scheduling and staff assignments</p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="table-wrapper">
+        <div className="table-toolbar">
+          <form className="flex items-center gap-3 flex-wrap">
+            <input type="date" name="date" defaultValue={format(selectedDate, "yyyy-MM-dd")} className="input max-w-[180px]" />
+            <select name="employee" defaultValue={selectedEmployeeId || ""} className="input max-w-[200px]">
+              <option value="">All Employees</option>
+              {employees.map(e => <option key={e.id} value={e.id}>{e.fullName} ({e.empCode})</option>)}
+            </select>
+            <select name="department" defaultValue={deptId || ""} className="input max-w-[180px]">
+              <option value="">All Departments</option>
+              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <button type="submit" className="btn-primary btn-sm">Filter</button>
+          </form>
+          <span className="text-xs text-muted-foreground">{shiftAssignments.length} assignments</span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-gray-500 uppercase bg-gray-50/50 border-b border-border">
+            <thead className="text-xs text-muted-foreground uppercase border-b border-border bg-gray-50/30">
               <tr>
-                <th scope="col" className="px-6 py-4 font-medium">
-                  Date
-                </th>
-                <th scope="col" className="px-6 py-4 font-medium">
-                  Employee
-                </th>
-                <th scope="col" className="px-6 py-4 font-medium">
-                  Shift Type
-                </th>
-                <th scope="col" className="px-6 py-4 font-medium">
-                  Timing
-                </th>
-                <th scope="col" className="px-6 py-4 font-medium text-right">
-                  Actions
-                </th>
+                <th className="px-5 py-3.5 font-semibold">Date</th>
+                <th className="px-5 py-3.5 font-semibold">Employee</th>
+                <th className="px-5 py-3.5 font-semibold">Department</th>
+                <th className="px-5 py-3.5 font-semibold">Shift</th>
+                <th className="px-5 py-3.5 font-semibold">Timing</th>
+                <th className="px-5 py-3.5 font-semibold">Seq</th>
+                <th className="px-5 py-3.5 font-semibold">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {shiftAssignments.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-8 text-center text-gray-500"
-                  >
-                    No upcoming shifts found. Click &ldquo;Assign Shift&rdquo; to get started.
+                  <td colSpan={7} className="px-5 py-12 text-center text-muted-foreground">
+                    No shift assignments found.
                   </td>
                 </tr>
               ) : (
-                shiftAssignments.map((assignment) => (
-                  <tr
-                    key={assignment.id}
-                    className="bg-card hover:bg-gray-50/50 transition-colors"
-                  >
-                    <td className="px-6 py-4 font-medium text-gray-900">
-                      {format(assignment.date, "MMM dd, yyyy")}
+                shiftAssignments.map((a) => (
+                  <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-gray-900">{format(a.workDate, "MMM dd, yyyy")}</td>
+                    <td className="px-5 py-3.5">
+                      <div className="font-medium text-gray-900">{a.employee.fullName}</div>
+                      <span className="text-xs text-muted-foreground font-mono">{a.employee.empCode}</span>
                     </td>
-                    <td className="px-6 py-4 text-primary font-medium">
-                      {assignment.employee.name}
-                      <span className="block text-xs text-gray-500 font-normal">
-                        {assignment.employee.code}
+                    <td className="px-5 py-3.5 text-gray-600">{a.employee.department?.name || "—"}</td>
+                    <td className="px-5 py-3.5">
+                      <span className="badge" style={{ backgroundColor: (a.shiftTemplate.color || "#6b7280") + "15", color: a.shiftTemplate.color || "#6b7280", borderColor: (a.shiftTemplate.color || "#6b7280") + "30" }}>
+                        {a.shiftTemplate.name}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-gray-700">
-                      <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-800">
-                        {assignment.shiftTemplate.name}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-500">
-                      {assignment.shiftTemplate.startTime} –{" "}
-                      {assignment.shiftTemplate.endTime}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <EditShiftModal assignment={assignment} />
-                    </td>
+                    <td className="px-5 py-3.5 font-mono text-xs">{a.shiftTemplate.startTime} – {a.shiftTemplate.endTime}</td>
+                    <td className="px-5 py-3.5 text-center text-xs">{a.sequence}</td>
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{a.status}</td>
                   </tr>
                 ))
               )}
