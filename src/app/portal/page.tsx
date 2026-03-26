@@ -77,19 +77,12 @@ export default async function PortalPage() {
             {recentAttendance.length === 0 ? (
               <div className="p-6 text-sm text-gray-500 text-center">No recent records.</div>
             ) : (
-              recentAttendance.map(record => {
-                let statusType: "SUCCESS" | "WARNING" | "ERROR" | "PENDING" | "INFO" = "SUCCESS";
-                if (record.status === "LATE" || record.status === "EARLY_EXIT") statusType = "WARNING";
-                if (record.status === "ABSENT" || record.status === "NO_SHOW") statusType = "ERROR";
-                if (record.status === "MISSING_PUNCH") statusType = "WARNING";
-                
-                return (
-                  <div key={record.id} className="p-4 px-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                    <div className="font-medium text-primary">{format(record.workDate, "EEE, MMM d")}</div>
-                    <StatusBadge status={record.status} />
-                  </div>
-                );
-              })
+              recentAttendance.map(record => (
+                <div key={record.id} className="p-4 px-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                  <div className="font-medium text-primary">{format(record.workDate, "EEE, MMM d")}</div>
+                  <StatusBadge status={record.status} />
+                </div>
+              ))
             )}
           </div>
         </Card>
