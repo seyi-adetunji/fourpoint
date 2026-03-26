@@ -36,9 +36,10 @@ export async function POST(req: Request) {
       where: { id: exceptionId },
       data: {
         status: "RESOLVED",
-        resolvedBy: "System Admin", // Hardcoded for demo, normally from session user
+        // resolvedByUserId would normally come from session, e.g. session.user.id
+        // but for now we'll just omit it if we don't have getServerSession
         resolvedAt: new Date(),
-        reason: `${exception.reason || ""} | Resolved: ${resolutionNotes || action}`
+        resolutionNote: `${exception.details || ""} | Resolved: ${resolutionNotes || action}`
       }
     });
 

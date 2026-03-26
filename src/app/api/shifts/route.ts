@@ -39,7 +39,7 @@ export async function POST(req: Request) {
       data: {
         employeeId,
         shiftTemplateId,
-        date: parsedDate,
+        workDate: parsedDate,
         sequence: sequence ?? 1,
       },
       include: {

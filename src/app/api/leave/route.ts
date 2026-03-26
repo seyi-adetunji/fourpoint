@@ -22,8 +22,9 @@ export async function POST(req: Request) {
         employeeId: session.user.employeeId,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
-        type,
+        leaveTypeId: type,
         reason,
+        requestedByUserId: session.user.id || 'unknown',
         status: "PENDING"
       }
     });
