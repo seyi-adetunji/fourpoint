@@ -1,13 +1,12 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaNeon } from "@prisma/adapter-neon";
-import { neon } from "@neondatabase/serverless";
+import { PrismaNeonHttp } from "@prisma/adapter-neon";
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
 const connectionString = `${process.env.DATABASE_URL}`;
 
-const sql = neon(connectionString);
-const adapter = new PrismaNeon(sql);
+// PrismaNeonHttp uses standard HTTPS (Port 443) to bypass local network blocks on Port 5432
+const adapter = new PrismaNeonHttp(connectionString, {});
 
 export const prisma =
   globalForPrisma.prisma ||
