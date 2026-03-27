@@ -138,15 +138,75 @@ export async function GET(request: Request) {
       { name: "Funke Adeyemi", email: "funke@fourpoints.com", role: "HOD" as Role, employeeId: empMap["EMP011"].id, departmentId: deptMap["Operations"].id },
     ];
 
-    for (const u of users) {
-      await prisma.user.upsert({
-        where: { email: u.email },
-        update: { 
-          role: u.role, 
-          departmentId: u.departmentId,
-          passwordHash 
-        },
-        create: { ...u, passwordHash },
+    // ─── 7. Shift Assignments (7-day rota) ─────────────────────────────────
+    const baseDate = new Date();
+    baseDate.setHours(0, 0, 0, 0);
+    const monday = subDays(baseDate, (baseDate.getDay() + 6) % 7); // Get Monday
+
+    const rota: Record<string, string[]> = {
+      EMP001: ["A", "A", "A", "A", "A", "OFF", "OFF"],
+      EMP002: ["OFF", "A", "B", "OFF", "A", "B", "B"],
+      EMP003: ["B", "B", "B", "B", "B", "OFF", "OFF"],
+      EMP004: ["A", "A", "A", "A", "OFF", "OFF", "A"],
+      EMP005: ["N", "N", "N", "N", "N", "OFF", "OFF"],
+      EMP006: ["OFF", "A", "A", "A", "A", "A", "OFF"],
+      EMP007: ["A", "A", "A", "A", "A", "OFF", "OFF"],
+      EMP008: ["A", "A", "A", "A", "A", "OFF", "OFF"],
+      EMP009: ["A", "A", "A,B", "A", "A", "OFF", "OFF"],
+      EMP010: ["A", "A", "A", "OFF", "B", "B", "OFF"],
+      EMP011: ["A,B", "A", "A", "A", "A", "OFF", "OFF"],
+      EMP012: ["B", "B", "B", "B", "OFF", "OFF", "B"],
+      EMP013: ["N", "N", "N", "N", "N", "OFF", "OFF"],
+      EMP014: ["A", "A", "A", "A", "A", "OFF", "OFF"],
+      EMP015: ["A", "A", "A", "OFF", "A", "A", "OFF"],
+    };
+
+    for (const [empCode, schedule] of Object.entries(rota)) {
+      const employee = empMap[empCode];
+      if (!employee) continue;
+
+      for (let day = 0; day < 7; day++) {
+        const dateVal = addDays(monday, day);
+        const shifts = schedule[day].split(",").map((s) => s.trim());
+
+        for (let seq = 0; seq < shifts.length; seq++) {
+          const code = shifts[seq];
+          if (code === "OFF") continue;
+
+          const template = templateMap[code];
+          if (!template) continue;
+
+          await prisma.shiftAssignment.upsert({
+            where: {
+              employeeId_workDate_sequence: {
+                employeeId: employee.id,
+                workDate: dateVal,
+                sequence: seq + 1,
+              },
+            },
+            update: { shiftTemplateId: template.id },
+            create: {
+              employeeId: employee.id,
+              shiftTemplateId: template.id,
+              workDate: dateVal,
+              sequence: seq + 1,
+              status: "SCHEDULED",
+            },
+          });
+        }
+      }
+    }
+
+    // ─── 8. Attendance Punches (representative) ───────────────────────────
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // (Punches loop omitted for brevity in API response, but creating basic ones for Admin)
+    const adminEmp = empMap["EMP001"];
+    if (adminEmp) {
+      const [startH, startM] = templateMap["A"].startTime.split(":").map(Number);
+      const shiftStart = setMinutes(setHours(today, startH), startM);
+      await prisma.attendancePunch.create({
+        data: { employeeId: adminEmp.id, punchTime: addMinutes(shiftStart, rand(-5, 5)), source: "BIOMETRIC" },
       });
     }
 
