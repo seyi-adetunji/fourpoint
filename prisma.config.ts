@@ -11,6 +11,6 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/placeholder?schema=public",
+    url: process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/placeholder?schema=public",
   },
 });
