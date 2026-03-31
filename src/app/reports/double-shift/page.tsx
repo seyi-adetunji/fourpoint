@@ -1,7 +1,8 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { Layers, Filter } from "lucide-react";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 
 export default async function DoubleShiftReport({
   searchParams,
@@ -9,16 +10,14 @@ export default async function DoubleShiftReport({
   searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
   const params = await searchParams;
-  const date = params.date ? new Date(params.date) : new Date();
-  const start = startOfDay(date);
-  const end = endOfDay(date);
+  const targetDate = getUTCMidnight(params.date as string | undefined);
 
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   
   // Find employees with more than 1 assignment on the same day
   const assignments = await prisma.shiftAssignment.findMany({
     where: {
-      workDate: { gte: start, lte: end },
+      workDate: targetDate,
       ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
@@ -43,7 +42,7 @@ export default async function DoubleShiftReport({
       <div className="page-header">
         <div>
           <h1 className="page-title">Double Shift report</h1>
-          <p className="page-subtitle">Employees assigned multiple shifts on {format(date, "PPP")}</p>
+          <p className="page-subtitle">Employees assigned multiple shifts on {format(targetDate, "PPP")}</p>
         </div>
       </div>
 
@@ -51,7 +50,7 @@ export default async function DoubleShiftReport({
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Date</label>
-            <input type="date" name="date" defaultValue={params.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
+            <input type="date" name="date" defaultValue={params.date || format(targetDate, "yyyy-MM-dd")} className="input py-2" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>

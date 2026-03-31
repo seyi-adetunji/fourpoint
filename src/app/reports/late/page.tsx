@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
-import { format, startOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Download } from "lucide-react";
 
@@ -11,8 +12,8 @@ export default async function LateComingReport({ searchParams }: { searchParams:
   const endStr = params?.end as string | undefined;
   const deptId = params?.department as string | undefined;
   
-  const startDate = startStr ? startOfDay(new Date(startStr)) : startOfDay(new Date());
-  const endDate = endStr ? startOfDay(new Date(endStr)) : startDate;
+  const startDate = getUTCMidnight(startStr);
+  const endDate = endStr ? getUTCMidnight(endStr) : startDate;
 
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   

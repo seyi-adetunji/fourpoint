@@ -1,7 +1,8 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { Users, Filter } from "lucide-react";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 
 export default async function ShiftCoverageReport({
   searchParams,
@@ -9,15 +10,13 @@ export default async function ShiftCoverageReport({
   searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
   const params = await searchParams;
-  const date = params.date ? new Date(params.date) : new Date();
-  const start = startOfDay(date);
-  const end = endOfDay(date);
+  const targetDate = getUTCMidnight(params.date as string | undefined);
 
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   
   const assignments = await prisma.shiftAssignment.findMany({
     where: {
-      workDate: { gte: start, lte: end },
+      workDate: targetDate,
       ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
@@ -39,7 +38,7 @@ export default async function ShiftCoverageReport({
       <div className="page-header">
         <div>
           <h1 className="page-title">Shift Coverage Analysis</h1>
-          <p className="page-subtitle">Staff distribution across shifts for {format(date, "PPP")}</p>
+          <p className="page-subtitle">Staff distribution across shifts for {format(targetDate, "PPP")}</p>
         </div>
       </div>
 
@@ -50,7 +49,7 @@ export default async function ShiftCoverageReport({
             <input 
               type="date" 
               name="date" 
-              defaultValue={params.date || format(new Date(), "yyyy-MM-dd")}
+              defaultValue={params.date || format(targetDate, "yyyy-MM-dd")}
               className="input py-2" 
             />
           </div>

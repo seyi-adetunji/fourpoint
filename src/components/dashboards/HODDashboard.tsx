@@ -3,11 +3,12 @@ import { Users, Calendar, AlertCircle, Clock, UserX, Layers } from "lucide-react
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
-import { startOfDay, format } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import Link from "next/link";
 
 export async function HODDashboard({ session }: { session: Session }) {
-  const today = startOfDay(new Date());
+  const today = getUTCMidnight();
   const departmentId = session.user.departmentId;
 
   if (!departmentId) {
@@ -59,7 +60,7 @@ export async function HODDashboard({ session }: { session: Session }) {
 
   const cards = [
     { title: "Department Staff", value: totalStaff, icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
-    { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results" },
+    { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
     { title: "Absent Staff", value: absentStaff, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
     { title: "Late Staff", value: lateStaff, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
     { title: "Double Shifts", value: doubleShifts, icon: Layers, color: "text-purple-600", bgColor: "bg-purple-50", href: "/reports/double-shift" },

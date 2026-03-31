@@ -2,7 +2,8 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { format, startOfDay, addDays } from "date-fns";
+import { format, addDays } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 
 export default async function EmployeeShiftsPage() {
   const session = await getServerSession(authOptions);
@@ -13,7 +14,7 @@ export default async function EmployeeShiftsPage() {
     return <div className="page-container"><p className="text-muted-foreground">Account not linked to employee profile.</p></div>;
   }
 
-  const today = startOfDay(new Date());
+  const today = getUTCMidnight();
   const fourWeeksOut = addDays(today, 28);
 
   const shifts = await prisma.shiftAssignment.findMany({

@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
-import { format, startOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 export const dynamic = "force-dynamic";
 import { Search, Download } from "lucide-react";
 
@@ -8,7 +9,7 @@ export default async function AttendancePunchesPage({ searchParams }: { searchPa
   const dateStr = params?.date as string | undefined;
   const query = params?.q as string | undefined;
 
-  const targetDate = dateStr ? startOfDay(new Date(dateStr)) : startOfDay(new Date());
+  const targetDate = getUTCMidnight(dateStr);
   const nextDay = new Date(targetDate);
   nextDay.setDate(nextDay.getDate() + 1);
 

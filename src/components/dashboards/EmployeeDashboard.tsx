@@ -3,11 +3,12 @@ import { Calendar, Clock, CheckCircle2, CalendarOff, FileEdit, AlertCircle } fro
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
-import { startOfDay, addDays, format } from "date-fns";
+import { addDays, format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import Link from "next/link";
 
 export async function EmployeeDashboard({ session }: { session: Session }) {
-  const today = startOfDay(new Date());
+  const today = getUTCMidnight();
   const weekEnd = addDays(today, 6);
   const employeeId = session.user.employeeId;
 

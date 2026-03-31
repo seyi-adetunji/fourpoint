@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
-import { format, startOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Download } from "lucide-react";
 
@@ -9,7 +10,7 @@ export default async function DailyAttendanceReport({ searchParams }: { searchPa
   const dateStr = params?.date as string | undefined;
   const deptId = params?.department as string | undefined;
   
-  const targetDate = dateStr ? startOfDay(new Date(dateStr)) : startOfDay(new Date());
+  const targetDate = getUTCMidnight(dateStr);
   
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
 

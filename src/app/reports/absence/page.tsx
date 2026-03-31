@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { UserX, Filter } from "lucide-react";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export const dynamic = "force-dynamic";
@@ -11,16 +12,14 @@ export default async function AbsenceReport({
   searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
   const params = await searchParams;
-  const date = params.date ? new Date(params.date) : new Date();
-  const start = startOfDay(date);
-  const end = endOfDay(date);
+  const targetDate = getUTCMidnight(params.date as string | undefined);
 
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   
-  const exceptions = await prisma.attendanceException.findMany({
+  const results = await prisma.attendanceResult.findMany({
     where: {
-      workDate: { gte: start, lte: end },
-      type: "NO_SHOW",
+      workDate: targetDate,
+      status: { in: ["ABSENT", "NO_SHOW", "MISSING_PUNCH"] },
       ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
     include: {
@@ -34,7 +33,7 @@ export default async function AbsenceReport({
       <div className="page-header">
         <div>
           <h1 className="page-title">Absence Report</h1>
-          <p className="page-subtitle">Unauthorized absences and no-shows for {format(date, "PPP")}</p>
+          <p className="page-subtitle">Unauthorized absences and no-shows for {format(targetDate, "PPP")}</p>
         </div>
       </div>
 
@@ -42,7 +41,7 @@ export default async function AbsenceReport({
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Date</label>
-            <input type="date" name="date" defaultValue={params.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
+            <input type="date" name="date" defaultValue={params.date || format(targetDate, "yyyy-MM-dd")} className="input py-2" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>
@@ -59,12 +58,12 @@ export default async function AbsenceReport({
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {exceptions.length === 0 ? (
+        {results.length === 0 ? (
           <div className="col-span-full card p-12 text-center text-muted-foreground">
             No absences recorded for this date.
           </div>
         ) : (
-          exceptions.map(e => (
+          results.map(e => (
             <div key={e.id} className="card p-5 border-t-4 border-red-500">
               <div className="flex items-start justify-between mb-4">
                 <div className="p-2 rounded-lg bg-red-50 text-red-600">
@@ -78,7 +77,7 @@ export default async function AbsenceReport({
               </div>
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-xs font-medium text-gray-500 uppercase">{e.employee.department?.name || "—"}</span>
-                <StatusBadge status="NO_SHOW" />
+                <StatusBadge status={e.status} />
               </div>
             </div>
           ))

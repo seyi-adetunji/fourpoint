@@ -1,14 +1,15 @@
 import prisma from "@/lib/prisma";
 import { Users, UserX, Clock, AlertCircle, Calendar, Timer, FileText, CalendarOff } from "lucide-react";
 import Link from "next/link";
-import { startOfDay, subDays, format } from "date-fns";
+import { subDays, format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import { AttendanceChart } from "@/components/AttendanceChart";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
 
 export async function AdminDashboard({ session }: { session: Session }) {
-  const today = startOfDay(new Date());
+  const today = getUTCMidnight();
   const sevenDaysAgo = subDays(today, 6);
 
   const [
@@ -71,7 +72,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
 
   const cards = [
     { title: "Total Staff", value: totalEmployees, icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
-    { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results" },
+    { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
     { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: "/reports/daily" },
     { title: "Absent / No Show", value: absentCount, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
     { title: "Late Today", value: lateCount, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },

@@ -1,12 +1,13 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
-import { format, startOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import AssignShiftModal from "@/components/AssignShiftModal";
 import EditShiftModal from "@/components/EditShiftModal";
 
 export default async function ShiftsPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const resolvedSearchParams = await searchParams;
-  const selectedDate = resolvedSearchParams?.date ? startOfDay(new Date(resolvedSearchParams.date as string)) : startOfDay(new Date());
+  const selectedDate = resolvedSearchParams?.date ? getUTCMidnight(resolvedSearchParams.date as string) : getUTCMidnight();
   const selectedEmployeeId = resolvedSearchParams?.employee as string | undefined;
   const deptId = resolvedSearchParams?.department as string | undefined;
 

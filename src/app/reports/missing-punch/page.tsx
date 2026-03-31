@@ -1,7 +1,8 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { Fingerprint, Filter } from "lucide-react";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export default async function MissingPunchReport({
@@ -10,15 +11,13 @@ export default async function MissingPunchReport({
   searchParams: Promise<{ date?: string; deptId?: string }>;
 }) {
   const params = await searchParams;
-  const date = params.date ? new Date(params.date) : new Date();
-  const start = startOfDay(date);
-  const end = endOfDay(date);
+  const targetDate = getUTCMidnight(params.date as string | undefined);
 
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   
   const exceptions = await prisma.attendanceException.findMany({
     where: {
-      workDate: { gte: start, lte: end },
+      workDate: targetDate,
       type: "MISSING_PUNCH",
       ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
     },
@@ -33,7 +32,7 @@ export default async function MissingPunchReport({
       <div className="page-header">
         <div>
           <h1 className="page-title">Missing Punch Audit</h1>
-          <p className="page-subtitle">Incomplete attendance logs requiring manual adjustment for {format(date, "PPP")}</p>
+          <p className="page-subtitle">Incomplete attendance logs requiring manual adjustment for {format(targetDate, "PPP")}</p>
         </div>
       </div>
 
@@ -41,7 +40,7 @@ export default async function MissingPunchReport({
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Date</label>
-            <input type="date" name="date" defaultValue={params.date || format(new Date(), "yyyy-MM-dd")} className="input py-2" />
+            <input type="date" name="date" defaultValue={params.date || format(targetDate, "yyyy-MM-dd")} className="input py-2" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>
