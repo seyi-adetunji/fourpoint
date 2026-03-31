@@ -131,20 +131,24 @@ function NavItem({ item, depth = 0 }: { item: NavItemConfig; depth?: number }) {
   );
 }
 
+import { useMobileNav } from "./MobileNavContext";
+
+// ... (rest of the iconMap and NavItem remains same)
+
 export function SidebarClient() {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const { isOpen, close } = useMobileNav();
 
   if (!session?.user) return null;
-  // Hide sidebar on login page  
   if (pathname === "/login") return null;
 
   const role = (session.user as any).role || "EMPLOYEE";
   const navItems = getNavForRole(role);
   const showSettings = ["SUPER_ADMIN", "HR_ADMIN"].includes(role);
 
-  return (
-    <div className="flex flex-col w-64 h-screen bg-sidebar border-r border-sidebar-border flex-shrink-0">
+  const sidebarContent = (
+    <div className="flex flex-col w-64 h-full bg-sidebar border-r border-sidebar-border">
       {/* ─── Logo / Branding ─── */}
       <div className="flex items-center h-[72px] px-5 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
@@ -212,5 +216,38 @@ export function SidebarClient() {
         </button>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex flex-shrink-0">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Sidebar (Drawer) */}
+      <div 
+        className={`fixed inset-0 z-50 lg:hidden transition-all duration-300 ease-in-out ${
+          isOpen ? "visible opacity-100" : "invisible opacity-0"
+        }`}
+      >
+        {/* Backdrop */}
+        <div 
+          className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+            isOpen ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={close}
+        />
+        
+        {/* Drawer Content */}
+        <aside 
+          className={`absolute inset-y-0 left-0 w-64 bg-sidebar transition-transform duration-300 ease-in-out transform ${
+            isOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          {sidebarContent}
+        </aside>
+      </div>
+    </>
   );
 }

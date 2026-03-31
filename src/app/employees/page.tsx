@@ -44,26 +44,26 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
 
       <div className="table-wrapper">
         <div className="table-toolbar">
-          <form className="flex items-center gap-3 flex-1">
-            <div className="relative flex-1 max-w-sm">
+          <form className="flex flex-col sm:flex-row items-center gap-3 w-full">
+            <div className="relative w-full sm:flex-1 sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 name="q"
                 type="text"
                 defaultValue={query}
-                placeholder="Search by name or code..."
-                className="input input-with-icon"
+                placeholder="Search..."
+                className="input input-with-icon w-full"
               />
             </div>
-            <select name="department" defaultValue={deptFilter || ""} className="input max-w-[200px]">
+            <select name="department" defaultValue={deptFilter || ""} className="input w-full sm:max-w-[200px]">
               <option value="">All Departments</option>
               {departments.map(d => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
-            <button type="submit" className="btn-secondary btn-sm">Filter</button>
+            <button type="submit" className="btn-secondary btn-sm w-full sm:w-auto">Filter</button>
           </form>
-          <span className="text-xs text-muted-foreground font-medium">{employees.length} employees</span>
+          <span className="text-xs text-muted-foreground font-medium hidden sm:block">{employees.length} employees</span>
         </div>
 
         <div className="overflow-x-auto">

@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: "Enterprise hotel workforce scheduling, attendance, and reporting platform by Four Points.",
 };
 
+import { MobileNavProvider } from "@/components/MobileNavContext";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -18,7 +20,8 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Providers>
-          <div className="flex h-screen overflow-hidden">
+          <MobileNavProvider>
+            <div className="flex h-screen overflow-hidden">
             <SidebarClient />
             <div className="flex-1 flex flex-col overflow-hidden">
               <TopBar />
@@ -28,7 +31,8 @@ export default function RootLayout({
                 </div>
               </main>
             </div>
-          </div>
+            </div>
+          </MobileNavProvider>
         </Providers>
       </body>
     </html>

@@ -38,16 +38,16 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div className="flex-1">
-          <h1 className="page-title flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-primary flex items-center gap-2 sm:gap-3">
             {employee.fullName}
             {employee.exceptions.length > 0 && (
-              <span className="badge-exception">
-                <AlertCircle className="w-3.5 h-3.5" />
+              <span className="badge-exception text-[10px] sm:text-xs">
+                <AlertCircle className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                 {employee.exceptions.length} Issues
               </span>
             )}
           </h1>
-          <p className="page-subtitle flex items-center gap-2 mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2 mt-1">
             <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-sm text-gray-700">{employee.empCode}</span>
             • {employee.department?.name || "Unassigned"} • {employee.designation || "Staff"}
           </p>

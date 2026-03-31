@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { format, startOfDay } from "date-fns";
+import AssignShiftModal from "@/components/AssignShiftModal";
+import EditShiftModal from "@/components/EditShiftModal";
 
 export default async function ShiftsPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const resolvedSearchParams = await searchParams;
@@ -41,6 +43,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
           <h1 className="page-title">Shift Assignments</h1>
           <p className="page-subtitle">Manage rota scheduling and staff assignments</p>
         </div>
+        <AssignShiftModal employees={employees} />
       </div>
 
       <div className="table-wrapper">
@@ -71,13 +74,14 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
                 <th className="px-5 py-3.5 font-semibold">Timing</th>
                 <th className="px-5 py-3.5 font-semibold">Seq</th>
                 <th className="px-5 py-3.5 font-semibold">Status</th>
+                <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {shiftAssignments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-muted-foreground">
-                    No shift assignments found.
+                  <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">
+                    No shift assignments found. Click <strong>Assign Shift</strong> to get started.
                   </td>
                 </tr>
               ) : (
@@ -97,6 +101,9 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
                     <td className="px-5 py-3.5 font-mono text-xs">{a.shiftTemplate.startTime} – {a.shiftTemplate.endTime}</td>
                     <td className="px-5 py-3.5 text-center text-xs">{a.sequence}</td>
                     <td className="px-5 py-3.5 text-xs text-muted-foreground">{a.status}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      <EditShiftModal assignment={a} />
+                    </td>
                   </tr>
                 ))
               )}

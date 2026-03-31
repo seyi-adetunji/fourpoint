@@ -192,30 +192,30 @@ export default function EditShiftModal({ assignment }: { assignment: AssignmentW
                 </div>
               )}
 
-              <div className="flex justify-between items-center pt-2">
+              <div className="flex flex-col sm:flex-row justify-between items-center pt-2 gap-4">
                 <button
                   type="button"
                   onClick={handleDelete}
                   disabled={isPending || isDeleting}
-                  className="text-sm font-medium text-red-600 hover:text-red-700 flex items-center gap-1 transition-colors disabled:opacity-50"
+                  className="text-sm font-medium text-red-600 hover:text-red-700 flex items-center justify-center gap-1 transition-colors disabled:opacity-50 w-full sm:w-auto p-2 sm:p-0"
                 >
                   {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  Delete
+                  Delete Assignment
                 </button>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={handleClose}
                     disabled={isPending || isDeleting}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-border rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-border rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-center"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isPending || isDeleting}
-                    className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center gap-2"
+                    className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                   >
                     {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                     {isPending ? "Saving…" : "Save Changes"}

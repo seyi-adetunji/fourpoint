@@ -3,7 +3,8 @@
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { format } from "date-fns";
-import { Bell, Search } from "lucide-react";
+import { Bell, Search, Menu } from "lucide-react";
+import { useMobileNav } from "./MobileNavContext";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Dashboard", subtitle: "Enterprise overview of workforce operations" },
@@ -29,6 +30,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
 export function TopBar() {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const { toggle } = useMobileNav();
 
   if (!session?.user || pathname === "/login") return null;
 
@@ -43,10 +45,19 @@ export function TopBar() {
   }
 
   return (
-    <div className="h-16 border-b border-border bg-white flex items-center justify-between px-6 lg:px-8 flex-shrink-0">
-      <div>
-        <h1 className="text-lg font-bold text-primary tracking-tight">{pageInfo.title}</h1>
-        <p className="text-xs text-muted-foreground -mt-0.5 hidden sm:block">{pageInfo.subtitle}</p>
+    <div className="h-16 border-b border-border bg-white flex items-center justify-between px-4 sm:px-6 lg:px-8 flex-shrink-0">
+      <div className="flex items-center gap-4">
+        <button 
+          onClick={toggle}
+          className="lg:hidden p-2 rounded-xl hover:bg-gray-100 transition-colors"
+          aria-label="Toggle Menu"
+        >
+          <Menu className="w-5 h-5 text-gray-500" />
+        </button>
+        <div>
+          <h1 className="text-base sm:text-lg font-bold text-primary tracking-tight">{pageInfo.title}</h1>
+          <p className="text-[10px] sm:text-xs text-muted-foreground -mt-0.5 hidden sm:block">{pageInfo.subtitle}</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

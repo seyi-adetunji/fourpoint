@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+"use client";
+
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, UserPlus, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -11,14 +13,12 @@ export default function AddEmployeePage() {
   const [error, setError] = useState("");
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
 
-  import("react").then((React) => {
-    React.useEffect(() => {
-      fetch("/api/departments")
-        .then((res) => res.json())
-        .then((data) => setDepartments(data))
-        .catch(console.error);
-    }, []);
-  });
+  useEffect(() => {
+    fetch("/api/departments")
+      .then((res) => res.json())
+      .then((data) => setDepartments(data))
+      .catch(console.error);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -114,27 +114,28 @@ export default function AddEmployeePage() {
               <select
                 id="department"
                 name="department"
+                required
                 className="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors text-sm bg-white"
               >
                 <option value="">Select a department...</option>
                 {departments.map((dept) => (
-                  <option key={dept.id} value={dept.name}>{dept.name}</option>
+                  <option key={dept.id} value={dept.id}>{dept.name}</option>
                 ))}
               </select>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-border flex justify-end gap-3">
+          <div className="pt-4 border-t border-border flex flex-col sm:flex-row justify-end gap-3">
             <Link 
               href="/employees"
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-border rounded-md hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-border rounded-md hover:bg-gray-50 transition-colors text-center"
             >
               Cancel
             </Link>
             <button
               type="submit"
               disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium shadow-sm disabled:opacity-50"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium shadow-sm disabled:opacity-50"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
               Save Employee

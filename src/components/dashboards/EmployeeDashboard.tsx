@@ -55,20 +55,20 @@ export async function EmployeeDashboard({ session }: { session: Session }) {
       </div>
 
       {/* Today's Shift & Status */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="!p-0">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Today&apos;s Shift</p>
+              <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider">Today&apos;s Shift</p>
               <div className="p-2 rounded-xl bg-blue-50">
                 <Calendar className="w-4 h-4 text-blue-600" />
               </div>
             </div>
-            <p className="text-xl font-bold text-primary">
+            <p className="text-lg sm:text-xl font-bold text-primary">
               {todayShifts.length > 0 ? todayShifts.map(s => s.shiftTemplate.name).join(" + ") : "Off Duty"}
             </p>
             {todayShifts.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                 {todayShifts.map(s => `${s.shiftTemplate.startTime} – ${s.shiftTemplate.endTime}`).join(" | ")}
               </p>
             )}
@@ -76,21 +76,21 @@ export async function EmployeeDashboard({ session }: { session: Session }) {
         </Card>
 
         <Card className="!p-0">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</p>
+              <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</p>
               <div className="p-2 rounded-xl bg-emerald-50">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               </div>
             </div>
-            <p className="text-xl font-bold text-primary">
+            <p className="text-lg sm:text-xl font-bold text-primary">
               {todayAttendance.length > 0 
                 ? todayAttendance[0].status.replace(/_/g, " ")
                 : todayShifts.length > 0 ? "Awaiting Clock In" : "Day Off"
               }
             </p>
             {todayAttendance.length > 0 && todayAttendance[0].actualIn && (
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                 Clocked in at {format(todayAttendance[0].actualIn, "HH:mm")}
               </p>
             )}
@@ -99,30 +99,30 @@ export async function EmployeeDashboard({ session }: { session: Session }) {
 
         <Link href="/employee/leave" className="group">
           <Card className="!p-0 group-hover:border-primary/20 transition-all">
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Leave Requests</p>
+                <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider">Leave Requests</p>
                 <div className="p-2 rounded-xl bg-blue-50">
                   <CalendarOff className="w-4 h-4 text-blue-600" />
                 </div>
               </div>
-              <p className="text-xl font-bold text-primary">{pendingLeaves}</p>
-              <p className="text-xs text-muted-foreground mt-1">Pending requests</p>
+              <p className="text-lg sm:text-xl font-bold text-primary">{pendingLeaves}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Pending requests</p>
             </div>
           </Card>
         </Link>
 
         <Link href="/employee/corrections" className="group">
           <Card className="!p-0 group-hover:border-primary/20 transition-all">
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Corrections</p>
+                <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider">Corrections</p>
                 <div className="p-2 rounded-xl bg-amber-50">
                   <FileEdit className="w-4 h-4 text-amber-600" />
                 </div>
               </div>
-              <p className="text-xl font-bold text-primary">{pendingCorrections}</p>
-              <p className="text-xs text-muted-foreground mt-1">Pending corrections</p>
+              <p className="text-lg sm:text-xl font-bold text-primary">{pendingCorrections}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Pending corrections</p>
             </div>
           </Card>
         </Link>
@@ -133,47 +133,50 @@ export async function EmployeeDashboard({ session }: { session: Session }) {
         {weeklyRota.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No shifts scheduled this week.</p>
         ) : (
-          <div className="grid grid-cols-7 gap-2">
-            {Array.from({ length: 7 }, (_, i) => {
-              const day = addDays(today, i);
-              const dayShifts = weeklyRota.filter(s => 
-                Math.abs(s.workDate.getTime() - day.getTime()) < 86400000
-              );
-              const isToday = i === 0;
+          <div className="relative">
+            <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto pb-2 scrollbar-none">
+              {Array.from({ length: 7 }, (_, i) => {
+                const day = addDays(today, i);
+                const dayShifts = weeklyRota.filter(s => 
+                  Math.abs(s.workDate.getTime() - day.getTime()) < 86400000
+                );
+                const isToday = i === 0;
 
-              return (
-                <div
-                  key={i}
-                  className={`rounded-xl border p-3 text-center transition-all
-                    ${isToday ? "border-primary/30 bg-primary/5 ring-1 ring-primary/10" : "border-border"}`}
-                >
-                  <p className={`text-[10px] font-bold uppercase tracking-wider ${isToday ? "text-primary" : "text-muted-foreground"}`}>
-                    {format(day, "EEE")}
-                  </p>
-                  <p className={`text-sm font-bold mt-0.5 ${isToday ? "text-primary" : "text-gray-800"}`}>
-                    {format(day, "d")}
-                  </p>
-                  <div className="mt-2 space-y-1">
-                    {dayShifts.length === 0 ? (
-                      <span className="text-[10px] text-gray-400 font-medium">OFF</span>
-                    ) : (
-                      dayShifts.map(s => (
-                        <div
-                          key={s.id}
-                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
-                          style={{ 
-                            backgroundColor: s.shiftTemplate.color + "15",
-                            color: s.shiftTemplate.color
-                          }}
-                        >
-                          {s.shiftTemplate.code}
-                        </div>
-                      ))
-                    )}
+                return (
+                  <div
+                    key={i}
+                    className={`flex-shrink-0 w-24 sm:w-auto rounded-xl border p-2 sm:p-3 text-center transition-all
+                      ${isToday ? "border-primary/30 bg-primary/5 ring-1 ring-primary/10" : "border-border"}`}
+                  >
+                    <p className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wider ${isToday ? "text-primary" : "text-muted-foreground"}`}>
+                      {format(day, "EEE")}
+                    </p>
+                    <p className={`text-base sm:text-sm font-bold mt-0.5 ${isToday ? "text-primary" : "text-gray-800"}`}>
+                      {format(day, "d")}
+                    </p>
+                    <div className="mt-2 space-y-1">
+                      {dayShifts.length === 0 ? (
+                        <span className="text-[9px] sm:text-[10px] text-gray-400 font-medium">OFF</span>
+                      ) : (
+                        dayShifts.map(s => (
+                          <div
+                            key={s.id}
+                            className="text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-md truncate"
+                            style={{ 
+                              backgroundColor: s.shiftTemplate.color + "15",
+                              color: s.shiftTemplate.color
+                            }}
+                            title={s.shiftTemplate.name}
+                          >
+                            {s.shiftTemplate.code}
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </Card>

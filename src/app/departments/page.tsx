@@ -18,7 +18,7 @@ export default async function DepartmentsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {departments.map(dept => (
           <div key={dept.id} className="card p-6">
             <div className="flex items-start justify-between mb-4">
