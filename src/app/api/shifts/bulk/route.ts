@@ -13,10 +13,11 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { employeeIds, shiftTemplateIds, dates } = body as {
+    const { employeeIds, shiftTemplateIds, dates, status = "SCHEDULED" } = body as {
       employeeIds: string[];
       shiftTemplateIds: string[];
       dates: string[];
+      status?: string;
     };
 
     if (
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
             shiftTemplateId: tplId,
             workDate: date,
             sequence: seq,
-            status: "SCHEDULED",
+            status: status as any,
           });
           nextSeq.set(dateKey, seq + 1);
         }

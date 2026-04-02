@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { Users, UserX, Clock, AlertCircle, Calendar, Timer, FileText, CalendarOff } from "lucide-react";
+import { Users, UserX, Clock, AlertCircle, Calendar, Timer, FileText, CalendarOff, CheckCircle2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { subDays, format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
@@ -7,6 +7,7 @@ import { AttendanceChart } from "@/components/AttendanceChart";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
+import { PendingShiftActions } from "@/components/dashboards/PendingShiftActions";
 
 export async function AdminDashboard({ session }: { session: Session }) {
   const today = getUTCMidnight();
@@ -24,6 +25,8 @@ export async function AdminDashboard({ session }: { session: Session }) {
     doubleShifts,
     pendingLeaves,
     overtimeResults,
+    pendingShiftCount,
+    pendingShifts,
   ] = await Promise.all([
     prisma.employee.count({ where: { isActive: true } }),
     prisma.shiftAssignment.count({ where: { workDate: today } }),
@@ -53,6 +56,13 @@ export async function AdminDashboard({ session }: { session: Session }) {
       where: { workDate: today, overtimeMinutes: { gt: 0 } },
       select: { overtimeMinutes: true }
     }),
+    prisma.shiftAssignment.count({ where: { status: "PENDING_APPROVAL" } }),
+    prisma.shiftAssignment.findMany({
+      where: { status: "PENDING_APPROVAL" },
+      take: 5,
+      include: { employee: true, shiftTemplate: true },
+      orderBy: { createdAt: "desc" }
+    }),
   ]);
 
   const totalOvertimeHours = Math.round(overtimeResults.reduce((sum, r) => sum + r.overtimeMinutes, 0) / 60);
@@ -79,6 +89,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
     { title: "Exceptions", value: unresolvedExceptions, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },
     { title: "Overtime Hours", value: totalOvertimeHours, icon: Timer, color: "text-purple-600", bgColor: "bg-purple-50", href: "/reports/overtime" },
     { title: "Leave Pending", value: pendingLeaves, icon: CalendarOff, color: "text-blue-600", bgColor: "bg-blue-50", href: "/leave" },
+    { title: "Shift Requests", value: pendingShiftCount, icon: Calendar, color: "text-orange-600", bgColor: "bg-orange-50", href: "/shifts?status=PENDING_APPROVAL" },
   ];
 
   return (
@@ -141,6 +152,41 @@ export async function AdminDashboard({ session }: { session: Session }) {
                   <StatusBadge status={ex.status} size="sm" />
                 </Link>
               ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Pending Shift Approvals */}
+        <Card title="Shift Approvals" description="Recent shift requests from HODs" noPadding>
+          {pendingShifts.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
+                <CheckCircle2 className="w-6 h-6 text-blue-500" />
+              </div>
+              <p className="text-sm text-muted-foreground">No pending shift requests</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {pendingShifts.map((sh) => (
+                <div key={sh.id} className="p-4 hover:bg-gray-50/50 transition-colors group">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm text-primary">{sh.employee.fullName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {format(sh.workDate, "MMM dd")} • {sh.shiftTemplate.name}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <PendingShiftActions assignmentId={sh.id} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {pendingShiftCount > 5 && (
+                <Link href="/shifts?status=PENDING_APPROVAL" className="block p-3 text-center text-xs font-semibold text-primary hover:bg-gray-50">
+                  View All {pendingShiftCount} Requests
+                </Link>
+              )}
             </div>
           )}
         </Card>

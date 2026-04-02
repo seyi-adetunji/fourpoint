@@ -151,7 +151,12 @@ export default function GroupEditShiftModal({ assignments, readOnly = false }: G
         onClick={handleOpen}
         className="font-medium text-accent hover:underline text-xs flex items-center justify-end gap-1 w-full"
       >
-        <Edit2 className="w-3 h-3" /> Edit
+        {readOnly ? (
+          <FileText className="w-3 h-3" />
+        ) : (
+          <Edit2 className="w-3 h-3" />
+        )}
+        {readOnly ? "View" : "Edit"}
       </button>
 
       {open && (
@@ -229,15 +234,17 @@ export default function GroupEditShiftModal({ assignments, readOnly = false }: G
                       <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
                         Sequence {idx + 1}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => markDelete(row.id)}
-                        disabled={isPending}
-                        className="text-red-400 hover:text-red-600 disabled:opacity-40 transition-colors"
-                        title="Remove this sequence"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => markDelete(row.id)}
+                          disabled={isPending}
+                          className="text-red-400 hover:text-red-600 disabled:opacity-40 transition-colors"
+                          title="Remove this sequence"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
 
                     {/* Shift template selector */}
@@ -246,8 +253,8 @@ export default function GroupEditShiftModal({ assignments, readOnly = false }: G
                       onChange={(e) =>
                         updateRow(row.id, { shiftTemplateId: e.target.value, action: "update" })
                       }
-                      disabled={isPending || templates.length === 0}
-                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+                      disabled={readOnly || isPending || templates.length === 0}
+                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/40 transition disabled:bg-gray-50 disabled:text-gray-500"
                     >
                       <option value="">
                         {templates.length === 0 ? "Loading…" : "Select shift…"}
