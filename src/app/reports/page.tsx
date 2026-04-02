@@ -2,7 +2,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 import {
   ClipboardList, Users, Clock, Timer, AlertTriangle,
-  CalendarOff, Layers, Fingerprint, UserX, BarChart3, Building2, FileText
+  CalendarOff, Layers, Fingerprint, UserX, BarChart3, Building2, FileText, CalendarRange
 } from "lucide-react";
 
 const reports = [
@@ -101,6 +101,14 @@ const reports = [
     icon: CalendarOff, 
     color: "text-sky-600", 
     bgColor: "bg-sky-50" 
+  },
+  { 
+    title: "Shift Schedule", 
+    description: "Full shift roster by date range, department and employee",
+    href: "/reports/schedule", 
+    icon: CalendarRange, 
+    color: "text-green-600", 
+    bgColor: "bg-green-50" 
   },
 ];
 
