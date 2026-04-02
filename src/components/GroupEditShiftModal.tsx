@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Loader2, Edit2, Trash2, Plus } from "lucide-react";
+import { X, Loader2, Edit2, Trash2, Plus, FileText } from "lucide-react";
 import type { ShiftAssignment, Employee, ShiftTemplate, Department } from "@prisma/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
