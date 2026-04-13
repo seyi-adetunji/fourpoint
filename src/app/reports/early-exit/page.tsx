@@ -20,7 +20,7 @@ export default async function EarlyExitReport({
     where: {
       workDate: targetDate,
       earlyExitMinutes: { gt: 0 },
-      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: Number(params.deptId) } } : {}),
     },
     include: {
       employee: { include: { department: true } },

@@ -2,7 +2,7 @@ import { AttendancePunch, ShiftAssignment, AttendanceResult, AttendanceException
 import { differenceInMinutes, isBefore, isAfter, startOfDay, addMinutes, max, min, addDays } from 'date-fns';
 
 type ProcessResult = {
-    employeeId: string;
+    employeeId: number;           // Int in Prisma schema (personnel_employee.id)
     shiftAssignmentId: string;
     workDate: Date;
     actualIn: Date | null;

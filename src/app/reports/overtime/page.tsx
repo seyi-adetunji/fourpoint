@@ -20,7 +20,7 @@ export default async function OvertimeReport({ searchParams }: { searchParams: P
     where: {
       workDate: { gte: startDate, lte: endDate },
       overtimeMinutes: { gt: 0 },
-      ...(deptId && { employee: { departmentId: deptId } }),
+      ...(deptId && { employee: { departmentId: Number(deptId) } }),
     },
     include: { employee: { include: { department: true } }, shiftTemplate: true },
     orderBy: [{ overtimeMinutes: "desc" }],

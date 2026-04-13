@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/Card";
 export default async function EmployeeDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const employee = await prisma.employee.findUnique({
-    where: { id },
+    where: { id: Number(id) },
     include: {
       department: true,
       shiftAssignments: {
@@ -22,7 +22,7 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
         orderBy: { workDate: "desc" },
         take: 10
       },
-      exceptions: {
+      attendanceExceptions: {
         where: { status: "PENDING" },
         orderBy: { workDate: "desc" }
       }
@@ -40,10 +40,10 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
         <div className="flex-1">
           <h1 className="text-xl sm:text-2xl font-bold text-primary flex items-center gap-2 sm:gap-3">
             {employee.fullName}
-            {employee.exceptions.length > 0 && (
+            {employee.attendanceExceptions.length > 0 && (
               <span className="badge-exception text-[10px] sm:text-xs">
                 <AlertCircle className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
-                {employee.exceptions.length} Issues
+                {employee.attendanceExceptions.length} Issues
               </span>
             )}
           </h1>
@@ -83,8 +83,8 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
               <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-border">
                 <Calendar className="w-4 h-4 text-muted-foreground" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Registered</p>
-                  <p className="text-sm font-medium text-gray-900">{format(employee.createdAt, "MMMM d, yyyy")}</p>
+                  <p className="text-xs text-muted-foreground">Employee Code</p>
+                  <p className="text-sm font-medium text-gray-900 font-mono">{employee.empCode}</p>
                 </div>
               </div>
             </div>
@@ -113,14 +113,14 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
 
         {/* Right Column: Attendance & Exceptions */}
         <div className="lg:col-span-2 space-y-6">
-          {employee.exceptions.length > 0 && (
+          {employee.attendanceExceptions.length > 0 && (
             <div className="rounded-2xl border border-red-200 bg-red-50 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-red-200 bg-red-100/50 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-red-600" />
                 <h3 className="text-sm font-semibold text-red-900">Unresolved Exceptions</h3>
               </div>
               <div className="divide-y divide-red-100">
-                {employee.exceptions.map(ex => (
+                {employee.attendanceExceptions.map(ex => (
                   <Link key={ex.id} href="/attendance/exceptions" className="flex items-center justify-between p-4 hover:bg-red-50/80 transition-colors">
                     <div>
                       <p className="font-medium text-sm text-red-900">{format(ex.workDate, "MMM dd, yyyy")} — {ex.type.replace(/_/g, " ")}</p>

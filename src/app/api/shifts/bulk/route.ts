@@ -13,12 +13,14 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { employeeIds, shiftTemplateIds, dates, status = "SCHEDULED" } = body as {
+    const { employeeIds: rawEmployeeIds, shiftTemplateIds, dates, status = "SCHEDULED" } = body as {
       employeeIds: string[];
       shiftTemplateIds: string[];
       dates: string[];
       status?: string;
     };
+    // Convert string IDs from form to Int for Prisma
+    const employeeIds = rawEmployeeIds.map(Number).filter(n => !isNaN(n));
 
     if (
       !Array.isArray(employeeIds) || employeeIds.length === 0 ||
@@ -62,7 +64,7 @@ export async function POST(req: Request) {
     const nextSeq = new Map<string, number>();
 
     const records: {
-      employeeId: string;
+      employeeId: number;
       shiftTemplateId: string;
       workDate: Date;
       sequence: number;

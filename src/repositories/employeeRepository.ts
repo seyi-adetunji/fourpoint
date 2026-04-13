@@ -2,9 +2,11 @@ import prisma from "@/lib/prisma";
 import { Employee, Prisma } from "@prisma/client";
 
 export class EmployeeRepository {
-  static async findById(id: string): Promise<Employee | null> {
+  static async findById(id: string | number): Promise<Employee | null> {
+    const numericId = typeof id === "string" ? parseInt(id) : id;
+    if (isNaN(numericId)) return null;
     return prisma.employee.findUnique({
-      where: { id },
+      where: { id: numericId },
     });
   }
 
@@ -25,16 +27,18 @@ export class EmployeeRepository {
     return prisma.employee.create({ data });
   }
 
-  static async update(id: string, data: Prisma.EmployeeUpdateInput): Promise<Employee> {
+  static async update(id: string | number, data: Prisma.EmployeeUpdateInput): Promise<Employee> {
+    const numericId = typeof id === "string" ? parseInt(id) : id;
     return prisma.employee.update({
-      where: { id },
+      where: { id: numericId },
       data,
     });
   }
 
-  static async delete(id: string): Promise<Employee> {
+  static async delete(id: string | number): Promise<Employee> {
+    const numericId = typeof id === "string" ? parseInt(id) : id;
     return prisma.employee.delete({
-      where: { id },
+      where: { id: numericId },
     });
   }
 }

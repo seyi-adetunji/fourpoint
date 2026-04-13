@@ -26,14 +26,14 @@ export default async function ShiftScheduleReport({
 
   // HOD: scope to own department
   const effectiveDeptId =
-    role === "HOD" ? userDeptId : params.deptId || undefined;
+    role === "HOD" ? userDeptId : params.deptId ? Number(params.deptId) : undefined;
 
   const [departments, employees, assignments] = await Promise.all([
     prisma.department.findMany({ orderBy: { name: "asc" } }),
     prisma.employee.findMany({
       where: {
         isActive: true,
-        ...(effectiveDeptId ? { departmentId: effectiveDeptId } : {}),
+        ...(effectiveDeptId ? { departmentId: Number(effectiveDeptId) } : {}),
       },
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, empCode: true },
@@ -41,8 +41,8 @@ export default async function ShiftScheduleReport({
     prisma.shiftAssignment.findMany({
       where: {
         workDate: { gte: fromDate, lte: toDate },
-        ...(params.empId ? { employeeId: params.empId } : {}),
-        ...(effectiveDeptId ? { employee: { departmentId: effectiveDeptId } } : {}),
+        ...(params.empId ? { employeeId: Number(params.empId) } : {}),
+        ...(effectiveDeptId ? { employee: { departmentId: Number(effectiveDeptId) } } : {}),
       },
       include: {
         employee: { include: { department: true } },

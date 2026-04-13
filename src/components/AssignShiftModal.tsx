@@ -14,7 +14,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Employee {
-  id: string;
+  id: number;
   empCode: string;
   fullName: string;
   department?: { name: string } | null;
@@ -32,7 +32,7 @@ interface ShiftTemplate {
 interface ExistingAssignment {
   workDate: string; // ISO date string
   shiftTemplate: { name: string; color?: string };
-  employeeId: string;
+  employeeId: number;
   sequence: number;
 }
 
@@ -78,7 +78,7 @@ export default function AssignShiftModal({ employees, requiresApproval = false }
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
   // ── Selection state
-  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<number>>(new Set());
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(new Set());
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
 
@@ -179,7 +179,7 @@ export default function AssignShiftModal({ employees, requiresApproval = false }
   const todayIso = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
 
   // ── Toggle helpers
-  const toggleEmployee = (id: string) => {
+  const toggleEmployee = (id: number) => {
     setSelectedEmployeeIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);

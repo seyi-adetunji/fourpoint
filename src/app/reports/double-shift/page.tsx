@@ -18,7 +18,7 @@ export default async function DoubleShiftReport({
   const assignments = await prisma.shiftAssignment.findMany({
     where: {
       workDate: targetDate,
-      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: Number(params.deptId) } } : {}),
     },
     include: {
       employee: { include: { department: true } },

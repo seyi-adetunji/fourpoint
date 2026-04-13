@@ -17,7 +17,7 @@ export default async function DailyAttendanceReport({ searchParams }: { searchPa
   const results = await prisma.attendanceResult.findMany({
     where: {
       workDate: targetDate,
-      ...(deptId && { employee: { departmentId: deptId } }),
+      ...(deptId && { employee: { departmentId: Number(deptId) } }),
     },
     include: {
       employee: { include: { department: true } },

@@ -19,7 +19,7 @@ export default async function MissingPunchReport({
     where: {
       workDate: targetDate,
       type: "MISSING_PUNCH",
-      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: Number(params.deptId) } } : {}),
     },
     include: {
       employee: { include: { department: true } },

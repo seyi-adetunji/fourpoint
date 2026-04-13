@@ -12,6 +12,7 @@ interface StatusBadgeProps {
 }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  // ─── Standard attendance statuses ───────────────────────────────────────
   PRESENT: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", label: "Present" },
   LATE: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", label: "Late" },
   EARLY_EXIT: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", label: "Early Exit" },
@@ -31,6 +32,11 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; 
   SCHEDULED: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", label: "Scheduled" },
   CONFIRMED: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", label: "Confirmed" },
   CANCELLED: { bg: "bg-red-50", text: "text-red-700", border: "border-red-200", label: "Cancelled" },
+  // ─── Attendance Intelligence statuses ────────────────────────────────────
+  ON_SHIFT_PRESENT:  { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", label: "On Shift · Present" },
+  ON_SHIFT_ABSENT:   { bg: "bg-red-50",     text: "text-red-700",     border: "border-red-200",     label: "On Shift · Absent"  },
+  OFF_SHIFT_PRESENT: { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200",  label: "Off Shift · Present" },
+  NO_SHIFT_NO_PUNCH: { bg: "bg-gray-50",   text: "text-gray-500",    border: "border-gray-200",    label: "No Activity"       },
 };
 
 export function StatusBadge({ status, size = "md" }: StatusBadgeProps) {

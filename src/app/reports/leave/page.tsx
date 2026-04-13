@@ -21,7 +21,7 @@ export default async function LeaveReport({
       OR: [
         { startDate: { lte: end }, endDate: { gte: start } }
       ],
-      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: Number(params.deptId) } } : {}),
     },
     include: {
       employee: { include: { department: true } },

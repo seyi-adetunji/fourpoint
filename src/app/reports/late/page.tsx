@@ -21,7 +21,7 @@ export default async function LateComingReport({ searchParams }: { searchParams:
     where: {
       workDate: { gte: startDate, lte: endDate },
       lateMinutes: { gt: 0 },
-      ...(deptId && { employee: { departmentId: deptId } }),
+      ...(deptId && { employee: { departmentId: Number(deptId) } }),
     },
     include: {
       employee: { include: { department: true } },

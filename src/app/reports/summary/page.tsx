@@ -19,7 +19,7 @@ export default async function SummaryReport({
   const results = await prisma.attendanceResult.findMany({
     where: {
       workDate: { gte: start, lte: end },
-      ...(params.empId ? { employeeId: params.empId } : {}),
+      ...(params.empId ? { employeeId: Number(params.empId) } : {}),
     },
     include: { employee: { include: { department: true } } },
   });
@@ -28,7 +28,7 @@ export default async function SummaryReport({
   const shiftAssignments = await prisma.shiftAssignment.findMany({
     where: {
       workDate: { gte: start, lte: end },
-      ...(params.empId ? { employeeId: params.empId } : {}),
+      ...(params.empId ? { employeeId: Number(params.empId) } : {}),
     },
     select: { employeeId: true, sequence: true },
   });

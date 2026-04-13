@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Calendar, Clock, AlertTriangle, 
   Building2, Layers, CalendarOff, BarChart3, Settings,
   LogOut, ChevronDown, ChevronRight, Fingerprint, ClipboardCheck,
-  FileEdit, UserCircle
+  FileEdit, UserCircle, ShieldAlert
 } from "lucide-react";
 import { useState } from "react";
 
@@ -15,7 +15,7 @@ import { useState } from "react";
 const iconMap: Record<string, any> = {
   LayoutDashboard, Users, Calendar, Clock, AlertTriangle,
   Building2, Layers, CalendarOff, BarChart3, Settings,
-  Fingerprint, ClipboardCheck, FileEdit, UserCircle,
+  Fingerprint, ClipboardCheck, FileEdit, UserCircle, ShieldAlert,
 };
 
 interface NavItemConfig {
@@ -38,6 +38,7 @@ const adminNav: NavItemConfig[] = [
       { name: "Punches", href: "/attendance/punches", icon: "Fingerprint" },
       { name: "Results", href: "/attendance/results", icon: "ClipboardCheck" },
       { name: "Exceptions", href: "/attendance/exceptions", icon: "AlertTriangle" },
+      { name: "Intel Report", href: "/reports/daily-attendance", icon: "ShieldAlert" },
     ],
   },
   { name: "Leave", href: "/leave", icon: "CalendarOff" },

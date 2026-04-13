@@ -17,7 +17,7 @@ export default async function AttendanceResultsPage({ searchParams }: { searchPa
   const results = await prisma.attendanceResult.findMany({
     where: {
       workDate: targetDate,
-      ...(deptId && { employee: { departmentId: deptId } }),
+      ...(deptId && { employee: { departmentId: Number(deptId) } }),
       ...(statusFilter && { status: statusFilter }),
     },
     include: {

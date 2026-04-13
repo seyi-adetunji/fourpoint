@@ -25,7 +25,7 @@ export default async function DepartmentsPage() {
               <div className="p-3 rounded-xl bg-primary/5">
                 <Building2 className="w-5 h-5 text-primary" />
               </div>
-              <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{dept.code}</span>
+              <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{dept.deptCode}</span>
             </div>
             <h3 className="font-semibold text-primary text-lg mb-1">{dept.name}</h3>
             <div className="flex items-center gap-1 text-sm text-muted-foreground">

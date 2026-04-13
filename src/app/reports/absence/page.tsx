@@ -20,7 +20,7 @@ export default async function AbsenceReport({
     where: {
       workDate: targetDate,
       status: { in: ["ABSENT", "NO_SHOW", "MISSING_PUNCH"] },
-      ...(params.deptId ? { employee: { departmentId: params.deptId } } : {}),
+      ...(params.deptId ? { employee: { departmentId: Number(params.deptId) } } : {}),
     },
     include: {
       employee: { include: { department: true } },

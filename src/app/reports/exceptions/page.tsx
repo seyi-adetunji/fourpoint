@@ -20,7 +20,7 @@ export default async function ExceptionsReport({ searchParams }: { searchParams:
   const exceptions = await prisma.attendanceException.findMany({
     where: {
       workDate: { gte: startDate, lte: endDate },
-      ...(deptId && { employee: { departmentId: deptId } }),
+      ...(deptId && { employee: { departmentId: Number(deptId) } }),
       ...(typeFilter && { type: typeFilter }),
     },
     include: { employee: { include: { department: true } } },

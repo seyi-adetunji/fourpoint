@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     let exceptionsCount = 0;
 
     // Group assignments by employee
-    const employeeAssignments = new Map<string, typeof assignments>();
+    const employeeAssignments = new Map<number, typeof assignments>();
     for (const a of assignments) {
       const existing = employeeAssignments.get(a.employeeId) || [];
       existing.push(a);
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
         // Create attendance result
         await prisma.attendanceResult.create({
           data: {
-            employeeId,
+            employeeId: assignment.employeeId,
             workDate: targetDate,
             shiftTemplateId: template.id,
             shiftAssignmentId: assignment.id,
@@ -167,7 +167,12 @@ export async function POST(req: NextRequest) {
         processedCount++;
 
         for (const exc of exceptions) {
-          await prisma.attendanceException.create({ data: exc });
+          await prisma.attendanceException.create({
+            data: {
+              ...exc,
+              employeeId: assignment.employeeId,
+            }
+          });
           exceptionsCount++;
         }
       }

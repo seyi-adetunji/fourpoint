@@ -5,7 +5,7 @@ import { Plus, Trash2, Loader2, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface Department {
-  id: string;
+  id: number;
   name: string;
 }
 
@@ -57,7 +57,7 @@ export default function ManageDepartments({ initialDepartments }: { initialDepar
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this department? Employees assigned to it will retain the text value.")) return;
 
     setLoading(true);

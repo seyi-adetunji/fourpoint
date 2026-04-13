@@ -37,7 +37,7 @@ export default async function ShiftsPage({
   ]);
 
   const role = (session?.user as any)?.role ?? "EMPLOYEE";
-  const userDeptId = (session?.user as any)?.departmentId as string | undefined;
+  const userDeptId = (session?.user as any)?.departmentId as number | undefined;
 
   // HOD: scope to own department only
   const isHOD = role === "HOD";
@@ -46,8 +46,14 @@ export default async function ShiftsPage({
   const selectedDate = resolvedSearchParams?.date
     ? getUTCMidnight(resolvedSearchParams.date as string)
     : getUTCMidnight();
-  const selectedEmployeeId = resolvedSearchParams?.employee as string | undefined;
-  const deptId = isHOD ? userDeptId : (resolvedSearchParams?.department as string | undefined);
+  const selectedEmployeeId = resolvedSearchParams?.employee
+    ? Number(resolvedSearchParams.employee)
+    : undefined;
+  const deptId = isHOD
+    ? userDeptId
+    : resolvedSearchParams?.department
+    ? Number(resolvedSearchParams.department)
+    : undefined;
   const statusFilter = resolvedSearchParams?.status as string | undefined;
 
   const [shiftAssignments, employees, departments] = await Promise.all([

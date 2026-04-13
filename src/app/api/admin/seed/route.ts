@@ -19,24 +19,11 @@ export async function GET(request: Request) {
 
     const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-    // ─── 1. Departments ────────────────────────────────────────────────────
-    const departments = [
-      { name: "Operations", code: "OPS" },
-      { name: "Housekeeping", code: "HSK" },
-      { name: "Front Office", code: "FO" },
-      { name: "Kitchen", code: "KIT" },
-      { name: "Human Resources", code: "HR" },
-      { name: "Maintenance", code: "MNT" },
-    ];
-
+    // ─── 1. Departments (Read-Only from ZKBio) ─────────────────────────────
+    const existingDepts = await prisma.department.findMany();
     const deptMap: Record<string, any> = {};
-    for (const d of departments) {
-      const dept = await prisma.department.upsert({
-        where: { code: d.code },
-        update: { name: d.name },
-        create: d,
-      });
-      deptMap[d.name] = dept;
+    for (const dept of existingDepts) {
+      deptMap[dept.name] = dept;
     }
 
     // ─── 2. Shift Templates ────────────────────────────────────────────────
@@ -91,38 +78,11 @@ export async function GET(request: Request) {
       });
     }
 
-    // ─── 5. Employees ──────────────────────────────────────────────────────
-    const employeeData = [
-      { empCode: "EMP001", fullName: "Valentine Ashioma", dept: "Operations", designation: "Operations Manager" },
-      { empCode: "EMP002", fullName: "Edet Asequo", dept: "Housekeeping", designation: "Room Attendant" },
-      { empCode: "EMP003", fullName: "Angela Okafor", dept: "Front Office", designation: "Receptionist" },
-      { empCode: "EMP004", fullName: "Mustapha Ibrahim", dept: "Kitchen", designation: "Chef de Partie" },
-      { empCode: "EMP005", fullName: "Samuel Adebayo", dept: "Operations", designation: "Concierge" },
-      { empCode: "EMP006", fullName: "Kadiri Musa", dept: "Maintenance", designation: "Maintenance Technician" },
-      { empCode: "EMP007", fullName: "Damilola Ogundimu", dept: "Human Resources", designation: "HR Officer" },
-      { empCode: "EMP008", fullName: "Abimbola Fashola", dept: "Front Office", designation: "Guest Relations" },
-      { empCode: "EMP009", fullName: "Chidinma Eze", dept: "Housekeeping", designation: "Housekeeping Supervisor" },
-      { empCode: "EMP010", fullName: "Ibrahim Suleiman", dept: "Kitchen", designation: "Sous Chef" },
-      { empCode: "EMP011", fullName: "Funke Adeyemi", dept: "Operations", designation: "Duty Manager" },
-      { empCode: "EMP012", fullName: "Tunde Bakare", dept: "Maintenance", designation: "Electrician" },
-      { empCode: "EMP013", fullName: "Grace Nwosu", dept: "Front Office", designation: "Night Auditor" },
-      { empCode: "EMP014", fullName: "Olayinka Popoola", dept: "Housekeeping", designation: "Laundry Attendant" },
-      { empCode: "EMP015", fullName: "Ahmed Bello", dept: "Kitchen", designation: "Kitchen Porter" },
-    ];
-
+    // ─── 5. Employees (Read-Only from ZKBio) ───────────────────────────────
+    const existingEmployees = await prisma.employee.findMany();
     const empMap: Record<string, any> = {};
-    for (const e of employeeData) {
-      const created = await prisma.employee.upsert({
-        where: { empCode: e.empCode },
-        update: { fullName: e.fullName, departmentId: deptMap[e.dept].id, designation: e.designation },
-        create: {
-          empCode: e.empCode,
-          fullName: e.fullName,
-          departmentId: deptMap[e.dept].id,
-          designation: e.designation,
-        },
-      });
-      empMap[e.empCode] = created;
+    for (const e of existingEmployees) {
+      empMap[e.empCode] = e;
     }
 
     // ─── 6. Users (login accounts) ─────────────────────────────────────────
@@ -197,18 +157,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // ─── 8. Attendance Punches (representative) ───────────────────────────
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // (Punches loop omitted for brevity in API response, but creating basic ones for Admin)
-    const adminEmp = empMap["EMP001"];
-    if (adminEmp) {
-      const [startH, startM] = templateMap["A"].startTime.split(":").map(Number);
-      const shiftStart = setMinutes(setHours(today, startH), startM);
-      await prisma.attendancePunch.create({
-        data: { employeeId: adminEmp.id, punchTime: addMinutes(shiftStart, rand(-5, 5)), source: "BIOMETRIC" },
-      });
-    }
+    // ─── 8. Attendance Punches (Read-Only from ZKBio) ─────────────────────
+    // Punches are read-only, so we do not seed them here.
+    // They are populated by the biometric devices directly.
 
     return NextResponse.json({ message: "Seeding complete!" });
   } catch (error: any) {

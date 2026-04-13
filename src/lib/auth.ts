@@ -16,22 +16,47 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid credentials");
         }
 
-        const email = credentials.email.toLowerCase();
+        const fs = require('fs');
+        const log = (msg: string) => {
+          try { fs.appendFileSync('auth-debug.log', new Date().toISOString() + ': ' + msg + '\n'); } catch (e) {}
+        };
+        
+        log(`Authorize called for: ${credentials?.email}`);
+        
+        const email = credentials.email.toLowerCase().trim();
         const user = await prisma.user.findUnique({
           where: { email }
         });
 
-        if (!user || !(await bcrypt.compare(credentials.password, user.passwordHash))) {
+        log(`User found: ${user ? 'YES' : 'NO'}`);
+
+        if (!user) {
+          log('Rejected: User not found in DB');
           throw new Error("Invalid email or password");
         }
+
+        let password = credentials.password;
+        if (typeof password === 'string') {
+          password = password.trim();
+        }
+        
+        const isValid = await bcrypt.compare(password, user.passwordHash);
+        log(`Password valid: ${isValid}`);
+
+        if (!isValid) {
+          log('Rejected: Password mismatch');
+          throw new Error("Invalid email or password");
+        }
+        
+        log('Accepted! Returning user object.');
 
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role,
-          employeeId: user.employeeId,
-          departmentId: user.departmentId,
+          employeeId: user.employeeId ?? null,
+          departmentId: user.departmentId ?? null,
         };
       }
     })
@@ -52,8 +77,8 @@ export const authOptions: NextAuthOptions = {
           ...session.user,
           id: token.id as string,
           role: token.role as string,
-          employeeId: token.employeeId as string | null,
-          departmentId: token.departmentId as string | null,
+          employeeId: (token.employeeId as number | null) ?? null,
+          departmentId: (token.departmentId as number | null) ?? null,
         };
       }
       return session;

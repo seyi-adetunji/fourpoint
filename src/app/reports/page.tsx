@@ -2,10 +2,20 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 import {
   ClipboardList, Users, Clock, Timer, AlertTriangle,
-  CalendarOff, Layers, Fingerprint, UserX, BarChart3, Building2, FileText, CalendarRange
+  CalendarOff, Layers, Fingerprint, UserX, BarChart3, Building2, FileText, CalendarRange,
+  ShieldAlert
 } from "lucide-react";
 
 const reports = [
+  { 
+    title: "Attendance Intelligence", 
+    description: "Live On-Shift/Absent/Off-Shift classification from biometric punches vs rota",
+    href: "/reports/daily-attendance", 
+    icon: ShieldAlert, 
+    color: "text-red-600", 
+    bgColor: "bg-red-50",
+    badge: "CRITICAL"
+  },
   { 
     title: "Daily Attendance", 
     description: "Department attendance report for any given day",
@@ -125,17 +135,29 @@ export default function ReportsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {reports.map((report) => {
           const Icon = report.icon;
+          const isCritical = !!(report as any).badge;
           return (
             <Link key={report.href} href={report.href} className="group">
-              <div className="card p-5 group-hover:shadow-lg group-hover:border-primary/20 transition-all duration-300">
+              <div className={`card p-5 group-hover:shadow-lg transition-all duration-300 ${
+                isCritical
+                  ? "border-red-200 group-hover:border-red-300 ring-1 ring-red-100"
+                  : "group-hover:border-primary/20"
+              }`}>
                 <div className="flex items-start gap-4">
                   <div className={`p-3 rounded-xl ${report.bgColor} flex-shrink-0`}>
                     <Icon className={`w-5 h-5 ${report.color}`} />
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-primary text-sm group-hover:text-primary-dark transition-colors">
-                      {report.title}
-                    </h3>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-primary text-sm group-hover:text-primary-dark transition-colors">
+                        {report.title}
+                      </h3>
+                      {isCritical && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-600 border border-red-200 tracking-wider uppercase">
+                          {(report as any).badge}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                       {report.description}
                     </p>
