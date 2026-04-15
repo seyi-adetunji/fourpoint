@@ -9,7 +9,8 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
   const query = resolvedSearchParams?.q as string | undefined;
   const deptFilter = resolvedSearchParams?.department as string | undefined;
 
-  const whereClause: any = { isActive: true };
+  // Default to showing all employees if the database marks them as inactive by default
+  const whereClause: any = {};
   if (query) {
     whereClause.OR = [
       { fullName: { contains: query, mode: "insensitive" } },
@@ -17,7 +18,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
     ];
   }
   if (deptFilter) {
-    whereClause.departmentId = deptFilter;
+    whereClause.departmentId = parseInt(deptFilter);
   }
 
   const [employees, departments] = await Promise.all([

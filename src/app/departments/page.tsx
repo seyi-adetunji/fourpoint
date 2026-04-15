@@ -5,7 +5,10 @@ export const dynamic = "force-dynamic";
 
 export default async function DepartmentsPage() {
   const departments = await prisma.department.findMany({
-    include: { _count: { select: { employees: true, users: true } } },
+    include: { 
+      _count: { select: { employees: true, users: true } },
+      departmentManager: true
+    },
     orderBy: { name: "asc" },
   });
 
@@ -28,6 +31,19 @@ export default async function DepartmentsPage() {
               <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{dept.deptCode}</span>
             </div>
             <h3 className="font-semibold text-primary text-lg mb-1">{dept.name}</h3>
+            
+            <div className="mb-4">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1">Head of Department</p>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center text-[10px] font-bold text-accent">
+                  {dept.departmentManager?.fullName?.[0] || "?"}
+                </div>
+                <span className="text-sm font-medium text-gray-700">
+                  {dept.departmentManager?.fullName || "Not Assigned"}
+                </span>
+              </div>
+            </div>
+
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <Users className="w-4 h-4" />
               <span>{dept._count.employees} employees</span>

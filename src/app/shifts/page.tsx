@@ -6,6 +6,7 @@ import AssignShiftModal from "@/components/AssignShiftModal";
 import GroupEditShiftModal from "@/components/GroupEditShiftModal";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { ExportButtons } from "@/components/ExportButtons";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,9 @@ export default async function ShiftsPage({
   const selectedDate = resolvedSearchParams?.date
     ? getUTCMidnight(resolvedSearchParams.date as string)
     : getUTCMidnight();
+  const endDateStr = resolvedSearchParams?.endDate as string | undefined;
+  const endDate = endDateStr ? getUTCMidnight(endDateStr) : undefined;
+  
   const selectedEmployeeId = resolvedSearchParams?.employee
     ? Number(resolvedSearchParams.employee)
     : undefined;
@@ -59,9 +63,12 @@ export default async function ShiftsPage({
   const [shiftAssignments, employees, departments] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where: {
-        ...(resolvedSearchParams?.date
+        ...(endDate 
+          ? { workDate: { gte: selectedDate, lte: endDate } }
+          : resolvedSearchParams?.date
           ? { workDate: selectedDate }
-          : { workDate: { gte: selectedDate } }),
+          : { workDate: { gte: selectedDate } }
+        ),
         ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
         ...(deptId && { employee: { departmentId: deptId } }),
         ...(statusFilter && { status: statusFilter }),
@@ -79,7 +86,6 @@ export default async function ShiftsPage({
     }),
     prisma.employee.findMany({
       where: {
-        isActive: true,
         ...(isHOD && userDeptId ? { departmentId: userDeptId } : {}),
       },
       orderBy: { fullName: "asc" },
@@ -87,6 +93,26 @@ export default async function ShiftsPage({
     }),
     prisma.department.findMany({ orderBy: { name: "asc" } }),
   ]);
+
+  const exportData = shiftAssignments.map(a => ({
+    date: format(a.workDate, "yyyy-MM-dd"),
+    employee: a.employee.fullName,
+    empCode: a.employee.empCode,
+    department: a.employee.department?.name || "—",
+    shift: a.shiftTemplate.name,
+    time: `${a.shiftTemplate.startTime}–${a.shiftTemplate.endTime}`,
+    status: a.status
+  }));
+
+  const exportHeaders = [
+    { label: "Date", key: "date" },
+    { label: "Employee", key: "employee" },
+    { label: "Staff ID", key: "empCode" },
+    { label: "Department", key: "department" },
+    { label: "Shift", key: "shift" },
+    { label: "Hours", key: "time" },
+    { label: "Status", key: "status" },
+  ];
 
   // Group by (employeeId + workDate)
   type GroupKey = string;
@@ -110,14 +136,12 @@ export default async function ShiftsPage({
               : "Manage rota scheduling and staff assignments"}
           </p>
         </div>
-        {/* HOD can request shifts (pending approval); admins have full manage */}
         <AssignShiftModal
           employees={employees}
           requiresApproval={isHOD}
         />
       </div>
 
-      {/* HOD pending banner */}
       {isHOD && (
         <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
           <span className="text-lg">⏳</span>
@@ -128,15 +152,24 @@ export default async function ShiftsPage({
       )}
 
       <div className="table-wrapper">
-        {/* Toolbar */}
         <div className="table-toolbar">
           <form className="flex items-center gap-3 flex-wrap">
-            <input
-              type="date"
-              name="date"
-              defaultValue={format(selectedDate, "yyyy-MM-dd")}
-              className="input max-w-[180px]"
-            />
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                name="date"
+                defaultValue={format(selectedDate, "yyyy-MM-dd")}
+                className="input max-w-[140px]"
+              />
+              <span className="text-gray-400">to</span>
+              <input
+                type="date"
+                name="endDate"
+                defaultValue={endDateStr || ""}
+                placeholder="End Date"
+                className="input max-w-[140px]"
+              />
+            </div>
             <select
               name="employee"
               defaultValue={selectedEmployeeId || ""}
@@ -170,13 +203,15 @@ export default async function ShiftsPage({
             </select>
             <button type="submit" className="btn-primary btn-sm">Filter</button>
           </form>
-          <span className="text-xs text-muted-foreground">
-            {groupList.length} employee-day{groupList.length !== 1 ? "s" : ""}{" "}
-            <span className="text-gray-400">({shiftAssignments.length} total shifts)</span>
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              {groupList.length} employee-days 
+              <span className="text-gray-400">({shiftAssignments.length} total shifts)</span>
+            </span>
+            <ExportButtons data={exportData} filename="rota_schedule" headers={exportHeaders} />
+          </div>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground uppercase border-b border-border bg-gray-50/30">
@@ -201,9 +236,7 @@ export default async function ShiftsPage({
               ) : (
                 groupList.map((group) => {
                   const first = group[0];
-                  const isMulti = group.length > 1;
                   const label = shiftCountLabel(group.length);
-
                   return (
                     <tr
                       key={`${first.employeeId}|${first.workDate.toISOString()}`}
@@ -221,14 +254,14 @@ export default async function ShiftsPage({
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex flex-col gap-1">
-                          {isMulti && (
+                          {group.length > 1 && (
                             <span className="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200 mb-0.5">
                               <span>⚡</span> {label}
                             </span>
                           )}
                           {group.map((a) => (
                             <div key={a.id} className="flex items-center gap-1.5">
-                              {isMulti && (
+                              {group.length > 1 && (
                                 <span className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold bg-gray-200 text-gray-500">
                                   {a.sequence}
                                 </span>

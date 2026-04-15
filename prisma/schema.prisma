@@ -1,6 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["multiSchema"]
+  output          = "../src/generated/client5"
 }
 
 datasource db {
@@ -45,15 +46,18 @@ model Employee {
   departmentId Int?     @map("department_id")
   designation  String?  @map("title")
 
-  department   Department? @relation(fields: [departmentId], references: [id])
-  
   shiftAssignments      ShiftAssignment[]
   attendanceResults     AttendanceResult[]
   attendancePunches     AttendancePunch[]
   attendanceExceptions  AttendanceException[]
+  department            Department? @relation("DeptEmployees", fields: [departmentId], references: [id])
+  
+  managedDepartments    Department[] @relation("DeptManager")
+  
   attendanceCorrections AttendanceCorrection[]
   leaveRequests         LeaveRequest[]
   users                 User[]
+  iclockTransactions    IclockTransaction[]
 
   @@map("personnel_employee")
   @@schema("public")
@@ -63,11 +67,44 @@ model Department {
   id       Int      @id
   deptCode String   @unique @map("dept_code")
   name     String   @map("dept_name")
+  deptManagerId Int? @map("dept_manager_id")
 
-  employees Employee[]
+  employees Employee[] @relation("DeptEmployees")
   users     User[]
+  departmentManager Employee? @relation("DeptManager", fields: [deptManagerId], references: [id])
 
   @@map("personnel_department")
+  @@schema("public")
+}
+
+model IclockTransaction {
+  id           Int      @id @default(autoincrement())
+  empCode      String   @map("emp_code")
+  punchTime    DateTime @map("punch_time")
+  terminalSn   String?  @map("terminal_sn")
+  terminalAlias String? @map("terminal_alias")
+  empId        Int?     @map("emp_id")
+  terminalId   Int?     @map("terminal_id")
+  source       Int?     @map("source")
+
+  employee     Employee? @relation(fields: [empId], references: [id])
+  terminal     IclockTerminal? @relation(fields: [terminalId], references: [id])
+
+  @@map("iclock_transaction")
+  @@schema("public")
+}
+
+model IclockTerminal {
+  id           Int      @id @default(autoincrement())
+  sn           String   @unique @map("sn")
+  alias        String?  @map("alias")
+  ipAddress    String?  @map("ip_address")
+  terminalName String?  @map("terminal_name")
+  lastActivity DateTime? @map("last_activity")
+
+  transactions IclockTransaction[]
+
+  @@map("iclock_terminal")
   @@schema("public")
 }
 
@@ -81,6 +118,7 @@ model ShiftTemplate {
   color      String   @default("#6B7280")
   graceLate  Int      @default(15)
   graceEarly Int      @default(15)
+  breakMinutes Int    @default(60)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -140,6 +178,7 @@ model AttendanceResult {
   lateMinutes       Int      @default(0)
   earlyExitMinutes  Int      @default(0)
   overtimeMinutes   Int      @default(0)
+  breakMinutes      Int      @default(0)
   status            String                           // PRESENT, LATE, EARLY_EXIT, ABSENT, NO_SHOW, MISSING_PUNCH, LATE_AND_EARLY
   remarks           String?
   createdAt         DateTime @default(now())
@@ -184,6 +223,8 @@ model AttendanceCorrection {
   employeeId         Int                            // → public.personnel_employee.id
   workDate           DateTime @db.Date
   attendanceResultId String?
+  type               String                           // IN, OUT
+  correctedTime      DateTime
   reason             String
   requestedByUserId  String
   status             String   @default("PENDING")  // PENDING, APPROVED, REJECTED

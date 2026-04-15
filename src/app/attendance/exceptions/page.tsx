@@ -2,17 +2,24 @@ import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Download } from "lucide-react";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { ExportButtons } from "@/components/ExportButtons";
 
 export default async function AttendanceExceptionsPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
   const statusFilter = params?.status as string | undefined;
   const typeFilter = params?.type as string | undefined;
 
+  const session = await getServerSession(authOptions);
+  const isHOD = session?.user?.role === "HOD" || session?.user?.role === "SUPERVISOR";
+  const departmentId = session?.user?.departmentId;
+
   const exceptions = await prisma.attendanceException.findMany({
     where: {
       ...(statusFilter && { status: statusFilter }),
       ...(typeFilter && { type: typeFilter }),
+      ...(isHOD && departmentId && { employee: { departmentId } }),
     },
     include: { employee: { include: { department: true } } },
     orderBy: { createdAt: "desc" },
@@ -21,6 +28,24 @@ export default async function AttendanceExceptionsPage({ searchParams }: { searc
 
   const types = ["NO_SHOW", "MISSING_PUNCH", "LATE_ARRIVAL", "EARLY_EXIT", "SHIFT_CONFLICT", "UNASSIGNED_PUNCH"];
   const statuses = ["PENDING", "RESOLVED", "DISMISSED"];
+
+  const exportData = exceptions.map(ex => ({
+    employee: ex.employee.fullName,
+    department: ex.employee.department?.name || "—",
+    date: format(ex.workDate, "yyyy-MM-dd"),
+    type: ex.type,
+    details: ex.details || "—",
+    status: ex.status
+  }));
+
+  const exportHeaders = [
+    { label: "Employee", key: "employee" },
+    { label: "Department", key: "department" },
+    { label: "Date", key: "date" },
+    { label: "Exception Type", key: "type" },
+    { label: "Details", key: "details" },
+    { label: "Status", key: "status" },
+  ];
 
   return (
     <div className="page-container animate-fade-in">
@@ -43,7 +68,10 @@ export default async function AttendanceExceptionsPage({ searchParams }: { searc
             </select>
             <button type="submit" className="btn-primary btn-sm">Filter</button>
           </form>
-          <span className="text-xs text-muted-foreground">{exceptions.length} exceptions</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">{exceptions.length} exceptions</span>
+            <ExportButtons data={exportData} filename="attendance_exceptions" headers={exportHeaders} />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

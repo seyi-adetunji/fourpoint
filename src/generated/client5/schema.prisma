@@ -1,0 +1,316 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+  output          = "../src/generated/client5"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "workforce"]
+}
+
+// ─── USERS (Login accounts) ─────────────────────────────────────────────────────
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+  employeeId   Int?     @unique // → public.personnel_employee.id
+  departmentId Int? // → public.personnel_department.id
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee            Employee?              @relation(fields: [employeeId], references: [id])
+  department          Department?            @relation(fields: [departmentId], references: [id])
+  auditLogs           AuditLog[]
+  assignedShifts      ShiftAssignment[]      @relation("AssignedByUser")
+  leaveRequested      LeaveRequest[]         @relation("LeaveRequestedBy")
+  leaveApproved       LeaveRequest[]         @relation("LeaveApprovedBy")
+  correctionRequests  AttendanceCorrection[] @relation("CorrectionRequestedBy")
+  correctionApprovals AttendanceCorrection[] @relation("CorrectionApprovedBy")
+  exceptionsAssigned  AttendanceException[]  @relation("ExceptionAssignedTo")
+  exceptionsResolved  AttendanceException[]  @relation("ExceptionResolvedBy")
+
+  @@schema("workforce")
+}
+
+model Employee {
+  id           Int     @id
+  empCode      String  @unique @map("emp_code")
+  fullName     String  @map("first_name")
+  lastName     String? @map("last_name")
+  isActive     Boolean @map("is_active")
+  departmentId Int?    @map("department_id")
+  designation  String? @map("title")
+
+  shiftAssignments     ShiftAssignment[]
+  attendanceResults    AttendanceResult[]
+  attendancePunches    AttendancePunch[]
+  attendanceExceptions AttendanceException[]
+  department           Department?           @relation("DeptEmployees", fields: [departmentId], references: [id])
+
+  managedDepartments Department[] @relation("DeptManager")
+
+  attendanceCorrections AttendanceCorrection[]
+  leaveRequests         LeaveRequest[]
+  users                 User[]
+  iclockTransactions    IclockTransaction[]
+
+  @@map("personnel_employee")
+  @@schema("public")
+}
+
+model Department {
+  id            Int    @id
+  deptCode      String @unique @map("dept_code")
+  name          String @map("dept_name")
+  deptManagerId Int?   @map("dept_manager_id")
+
+  employees         Employee[] @relation("DeptEmployees")
+  users             User[]
+  departmentManager Employee?  @relation("DeptManager", fields: [deptManagerId], references: [id])
+
+  @@map("personnel_department")
+  @@schema("public")
+}
+
+model IclockTransaction {
+  id            Int      @id @default(autoincrement())
+  empCode       String   @map("emp_code")
+  punchTime     DateTime @map("punch_time")
+  terminalSn    String?  @map("terminal_sn")
+  terminalAlias String?  @map("terminal_alias")
+  empId         Int?     @map("emp_id")
+  terminalId    Int?     @map("terminal_id")
+  source        Int?     @map("source")
+
+  employee Employee?       @relation(fields: [empId], references: [id])
+  terminal IclockTerminal? @relation(fields: [terminalId], references: [id])
+
+  @@map("iclock_transaction")
+  @@schema("public")
+}
+
+model IclockTerminal {
+  id           Int       @id @default(autoincrement())
+  sn           String    @unique @map("sn")
+  alias        String?   @map("alias")
+  ipAddress    String?   @map("ip_address")
+  terminalName String?   @map("terminal_name")
+  lastActivity DateTime? @map("last_activity")
+
+  transactions IclockTransaction[]
+
+  @@map("iclock_terminal")
+  @@schema("public")
+}
+
+// ─── SHIFT TEMPLATES ────────────────────────────────────────────────────────────
+model ShiftTemplate {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  startTime    String
+  endTime      String
+  color        String   @default("#6B7280")
+  graceLate    Int      @default(15)
+  graceEarly   Int      @default(15)
+  breakMinutes Int      @default(60)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignments       ShiftAssignment[]
+  attendanceResults AttendanceResult[]
+
+  @@schema("workforce")
+}
+
+// ─── SHIFT ASSIGNMENTS (Rota) ───────────────────────────────────────────────────
+model ShiftAssignment {
+  id               String   @id @default(cuid())
+  employeeId       Int // → public.personnel_employee.id
+  shiftTemplateId  String
+  workDate         DateTime @db.Date
+  sequence         Int      @default(1)
+  status           String   @default("SCHEDULED") // SCHEDULED, CONFIRMED, CANCELLED, SWAPPED
+  notes            String?
+  assignedByUserId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employee      Employee           @relation(fields: [employeeId], references: [id])
+  shiftTemplate ShiftTemplate      @relation(fields: [shiftTemplateId], references: [id])
+  assignedBy    User?              @relation("AssignedByUser", fields: [assignedByUserId], references: [id])
+  results       AttendanceResult[]
+
+  @@unique([employeeId, workDate, sequence])
+  @@schema("workforce")
+}
+
+// ─── ATTENDANCE PUNCHES (Raw biometric data) ────────────────────────────────────
+model AttendancePunch {
+  id         String   @id @default(cuid())
+  employeeId Int // → public.personnel_employee.id
+  punchTime  DateTime
+  deviceName String?
+  source     String   @default("BIOMETRIC")
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@schema("workforce")
+}
+
+// ─── ATTENDANCE RESULTS (Processed records) ─────────────────────────────────────
+model AttendanceResult {
+  id                String    @id @default(cuid())
+  employeeId        Int // → public.personnel_employee.id
+  workDate          DateTime  @db.Date
+  shiftTemplateId   String?
+  shiftAssignmentId String?
+  sequence          Int       @default(1)
+  actualIn          DateTime?
+  actualOut         DateTime?
+  workedMinutes     Int       @default(0)
+  lateMinutes       Int       @default(0)
+  earlyExitMinutes  Int       @default(0)
+  overtimeMinutes   Int       @default(0)
+  breakMinutes      Int       @default(0)
+  status            String // PRESENT, LATE, EARLY_EXIT, ABSENT, NO_SHOW, MISSING_PUNCH, LATE_AND_EARLY
+  remarks           String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  employee        Employee               @relation(fields: [employeeId], references: [id])
+  shiftTemplate   ShiftTemplate?         @relation(fields: [shiftTemplateId], references: [id])
+  shiftAssignment ShiftAssignment?       @relation(fields: [shiftAssignmentId], references: [id])
+  corrections     AttendanceCorrection[]
+  exceptions      AttendanceException[]
+
+  @@schema("workforce")
+}
+
+// ─── ATTENDANCE EXCEPTIONS ──────────────────────────────────────────────────────
+model AttendanceException {
+  id                 String    @id @default(cuid())
+  employeeId         Int // → public.personnel_employee.id
+  workDate           DateTime  @db.Date
+  attendanceResultId String?
+  type               String // NO_SHOW, MISSING_PUNCH, LATE_ARRIVAL, EARLY_EXIT, SHIFT_CONFLICT, UNASSIGNED_PUNCH, DOUBLE_SHIFT_CONFLICT
+  details            String?
+  status             String    @default("PENDING") // PENDING, REVIEWING, RESOLVED, DISMISSED
+  assignedToUserId   String?
+  resolvedByUserId   String?
+  resolutionNote     String?
+  resolvedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  attendanceResult AttendanceResult? @relation(fields: [attendanceResultId], references: [id])
+  assignedTo       User?             @relation("ExceptionAssignedTo", fields: [assignedToUserId], references: [id])
+  resolvedBy       User?             @relation("ExceptionResolvedBy", fields: [resolvedByUserId], references: [id])
+
+  @@schema("workforce")
+}
+
+// ─── ATTENDANCE CORRECTIONS ─────────────────────────────────────────────────────
+model AttendanceCorrection {
+  id                 String   @id @default(cuid())
+  employeeId         Int // → public.personnel_employee.id
+  workDate           DateTime @db.Date
+  attendanceResultId String?
+  type               String // IN, OUT
+  correctedTime      DateTime
+  reason             String
+  requestedByUserId  String
+  status             String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvedByUserId   String?
+  approvalNote       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  attendanceResult AttendanceResult? @relation(fields: [attendanceResultId], references: [id])
+  requestedBy      User              @relation("CorrectionRequestedBy", fields: [requestedByUserId], references: [id])
+  approvedBy       User?             @relation("CorrectionApprovedBy", fields: [approvedByUserId], references: [id])
+
+  @@schema("workforce")
+}
+
+// ─── LEAVE TYPES ────────────────────────────────────────────────────────────────
+model LeaveType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  leaveRequests LeaveRequest[]
+
+  @@schema("workforce")
+}
+
+// ─── LEAVE REQUESTS ─────────────────────────────────────────────────────────────
+model LeaveRequest {
+  id                String   @id @default(cuid())
+  employeeId        Int // → public.personnel_employee.id
+  leaveTypeId       String
+  startDate         DateTime @db.Date
+  endDate           DateTime @db.Date
+  reason            String
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestedByUserId String
+  approvedByUserId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  requestedBy User      @relation("LeaveRequestedBy", fields: [requestedByUserId], references: [id])
+  approvedBy  User?     @relation("LeaveApprovedBy", fields: [approvedByUserId], references: [id])
+
+  @@schema("workforce")
+}
+
+// ─── HOLIDAYS ───────────────────────────────────────────────────────────────────
+model Holiday {
+  id          String   @id @default(cuid())
+  name        String
+  holidayDate DateTime @unique @db.Date
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@schema("workforce")
+}
+
+// ─── AUDIT LOGS ─────────────────────────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entity     String?
+  entityId   String?
+  beforeJson String?
+  afterJson  String?
+  details    String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@schema("workforce")
+}
+
+// ─── ROLES ──────────────────────────────────────────────────────────────────────
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  HOD
+  SUPERVISOR
+  EMPLOYEE
+
+  @@schema("workforce")
+}

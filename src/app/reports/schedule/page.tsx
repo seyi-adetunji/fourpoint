@@ -32,7 +32,6 @@ export default async function ShiftScheduleReport({
     prisma.department.findMany({ orderBy: { name: "asc" } }),
     prisma.employee.findMany({
       where: {
-        isActive: true,
         ...(effectiveDeptId ? { departmentId: Number(effectiveDeptId) } : {}),
       },
       orderBy: { fullName: "asc" },

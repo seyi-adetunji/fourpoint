@@ -37,10 +37,10 @@ export async function POST(req: NextRequest) {
     const punchWindowEnd = addDays(targetDate, 1);
     punchWindowEnd.setHours(8, 0, 0, 0);
 
-    const allPunches = await prisma.attendancePunch.findMany({
+    const allPunches = await prisma.iclockTransaction.findMany({
       where: {
         punchTime: { gte: punchWindowStart, lte: punchWindowEnd },
-        employeeId: { in: [...new Set(assignments.map(a => a.employeeId))] },
+        empId: { in: [...new Set(assignments.map(a => a.employeeId))] } as any,
       },
       orderBy: { punchTime: "asc" },
     });
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     for (const [employeeId, empAssignments] of employeeAssignments) {
       let remainingPunches = allPunches
-        .filter(p => p.employeeId === employeeId)
+        .filter(p => p.empId === employeeId)
         .sort((a, b) => a.punchTime.getTime() - b.punchTime.getTime());
 
       const sortedAssignments = empAssignments.sort((a, b) => a.sequence - b.sequence);

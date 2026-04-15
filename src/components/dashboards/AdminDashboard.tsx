@@ -27,8 +27,11 @@ export async function AdminDashboard({ session }: { session: Session }) {
     overtimeResults,
     pendingShiftCount,
     pendingShifts,
+    terminalCount,
+    livePunchesToday,
+    terminals,
   ] = await Promise.all([
-    prisma.employee.count({ where: { isActive: true } }),
+    prisma.employee.count(),
     prisma.shiftAssignment.count({ where: { workDate: today } }),
     prisma.attendanceResult.count({
       where: { workDate: today, status: { in: ["PRESENT", "LATE", "EARLY_EXIT"] } }
@@ -63,6 +66,14 @@ export async function AdminDashboard({ session }: { session: Session }) {
       include: { employee: true, shiftTemplate: true },
       orderBy: { createdAt: "desc" }
     }),
+    prisma.iclockTerminal.count(),
+    prisma.iclockTransaction.count({ 
+      where: { 
+        punchTime: { gte: today },
+        employee: { isNot: null } // Only count real employee punches
+      } 
+    }),
+    prisma.iclockTerminal.findMany({ orderBy: { lastActivity: "desc" } }),
   ]);
 
   const totalOvertimeHours = Math.round(overtimeResults.reduce((sum, r) => sum + r.overtimeMinutes, 0) / 60);
@@ -83,13 +94,12 @@ export async function AdminDashboard({ session }: { session: Session }) {
   const cards = [
     { title: "Total Staff", value: totalEmployees, icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
     { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
+    { title: "Live Punches Today", value: livePunchesToday, icon: Timer, color: "text-indigo-600", bgColor: "bg-indigo-50", href: "/attendance/punches" },
+    { title: "Connected Clocks", value: terminalCount, icon: Clock, color: "text-emerald-700", bgColor: "bg-emerald-50", href: "#" },
     { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: "/reports/daily" },
     { title: "Absent / No Show", value: absentCount, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
     { title: "Late Today", value: lateCount, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
     { title: "Exceptions", value: unresolvedExceptions, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },
-    { title: "Overtime Hours", value: totalOvertimeHours, icon: Timer, color: "text-purple-600", bgColor: "bg-purple-50", href: "/reports/overtime" },
-    { title: "Leave Pending", value: pendingLeaves, icon: CalendarOff, color: "text-blue-600", bgColor: "bg-blue-50", href: "/leave" },
-    { title: "Shift Requests", value: pendingShiftCount, icon: Calendar, color: "text-orange-600", bgColor: "bg-orange-50", href: "/shifts?status=PENDING_APPROVAL" },
   ];
 
   return (
@@ -189,6 +199,28 @@ export async function AdminDashboard({ session }: { session: Session }) {
               )}
             </div>
           )}
+        </Card>
+        {/* Biometric Terminals Status */}
+        <Card title="Terminal Status" description="Biometric device connectivity" noPadding>
+          <div className="divide-y divide-border">
+            {terminals.map((term) => (
+              <div key={term.id} className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-sm text-primary">{term.alias || term.sn}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{term.terminalName} • {term.ipAddress}</p>
+                </div>
+                <div className="text-right">
+                  <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+                    term.lastActivity && (new Date().getTime() - new Date(term.lastActivity).getTime() < 3600000)
+                      ? "bg-emerald-100 text-emerald-700" 
+                      : "bg-gray-100 text-gray-600"
+                  }`}>
+                    {term.lastActivity ? `Active ${format(new Date(term.lastActivity), "HH:mm")}` : "Offline"}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
     </div>

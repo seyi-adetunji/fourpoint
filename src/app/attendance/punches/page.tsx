@@ -2,7 +2,8 @@ import prisma from "@/lib/prisma";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
 export const dynamic = "force-dynamic";
-import { Search, Download } from "lucide-react";
+import { Search } from "lucide-react";
+import { ExportButtons } from "@/components/ExportButtons";
 
 export default async function AttendancePunchesPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
@@ -13,17 +14,34 @@ export default async function AttendancePunchesPage({ searchParams }: { searchPa
   const nextDay = new Date(targetDate);
   nextDay.setDate(nextDay.getDate() + 1);
 
-  const punches = await prisma.attendancePunch.findMany({
+  const punches = await prisma.iclockTransaction.findMany({
     where: {
       punchTime: { gte: targetDate, lt: nextDay },
+      employee: { isNot: null }, 
       ...(query && {
         employee: { fullName: { contains: query, mode: "insensitive" as any } },
       }),
     },
-    include: { employee: { include: { department: true } } },
+    include: { employee: { include: { department: true } }, terminal: true },
     orderBy: { punchTime: "desc" },
     take: 200,
   });
+
+  const exportData = punches.map(p => ({
+    fullName: p.employee?.fullName || "—",
+    empCode: p.employee?.empCode || "—",
+    department: p.employee?.department?.name || "—",
+    punchTime: format(p.punchTime, "yyyy-MM-dd HH:mm:ss"),
+    source: p.terminalAlias || p.terminalSn || "Biometric"
+  }));
+
+  const exportHeaders = [
+    { label: "Employee Name", key: "fullName" },
+    { label: "Staff ID", key: "empCode" },
+    { label: "Department", key: "department" },
+    { label: "Punch Time", key: "punchTime" },
+    { label: "Source/Device", key: "source" },
+  ];
 
   return (
     <div className="page-container animate-fade-in">
@@ -45,7 +63,7 @@ export default async function AttendancePunchesPage({ searchParams }: { searchPa
           </form>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{punches.length} punches</span>
-            <button className="btn-secondary btn-sm"><Download className="w-3.5 h-3.5" /> CSV</button>
+            <ExportButtons data={exportData} filename="attendance_punches" headers={exportHeaders} />
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -64,11 +82,11 @@ export default async function AttendancePunchesPage({ searchParams }: { searchPa
                 <tr><td colSpan={5} className="px-5 py-12 text-center text-muted-foreground">No punches found for this date.</td></tr>
               ) : punches.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-gray-900">{p.employee.fullName}</td>
-                  <td className="px-5 py-3.5"><span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{p.employee.empCode}</span></td>
-                  <td className="px-5 py-3.5 text-gray-600">{p.employee.department?.name || "—"}</td>
+                  <td className="px-5 py-3.5 font-medium text-gray-900">{p.employee?.fullName}</td>
+                  <td className="px-5 py-3.5"><span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{p.employee?.empCode}</span></td>
+                  <td className="px-5 py-3.5 text-gray-600">{p.employee?.department?.name || "—"}</td>
                   <td className="px-5 py-3.5 font-mono text-xs font-semibold">{format(p.punchTime, "HH:mm:ss")}</td>
-                  <td className="px-5 py-3.5"><span className="badge bg-gray-50 text-gray-700 border-gray-200">{p.source}</span></td>
+                  <td className="px-5 py-3.5"><span className="badge bg-gray-50 text-gray-700 border-gray-200">{p.terminalAlias || p.terminalSn || "Biometric"}</span></td>
                 </tr>
               ))}
             </tbody>

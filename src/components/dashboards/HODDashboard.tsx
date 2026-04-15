@@ -23,7 +23,10 @@ export async function HODDashboard({ session }: { session: Session }) {
     );
   }
 
-  const department = await prisma.department.findUnique({ where: { id: departmentId } });
+  const department = await prisma.department.findUnique({ 
+    where: { id: departmentId },
+    include: { departmentManager: true }
+  });
 
   const [
     totalStaff,
@@ -34,7 +37,7 @@ export async function HODDashboard({ session }: { session: Session }) {
     doubleShifts,
     exceptions,
   ] = await Promise.all([
-    prisma.employee.count({ where: { departmentId, isActive: true } }),
+    prisma.employee.count({ where: { departmentId } }),
     prisma.shiftAssignment.count({
       where: { workDate: today, employee: { departmentId } }
     }),
@@ -73,7 +76,7 @@ export async function HODDashboard({ session }: { session: Session }) {
         <div>
           <h1 className="page-title text-2xl">Department Dashboard</h1>
           <p className="page-subtitle">
-            {department?.name || "Department"} — {format(today, "EEEE, MMMM d, yyyy")}
+            {department?.name || "Department"} • Managed by {department?.departmentManager?.fullName || "Not Assigned"} — {format(today, "EEEE, MMMM d, yyyy")}
           </p>
         </div>
       </div>
