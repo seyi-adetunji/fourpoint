@@ -1,0 +1,761 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict Fnekx1IRVf004ZQydRZ8FPdyn6wJTxJoOjigkcEhMNux3Wxx2UeeNTwKL8SZKnV
+
+-- Dumped from database version 17.9
+-- Dumped by pg_dump version 17.9
+
+-- Started on 2026-04-16 15:24:23
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- TOC entry 6 (class 2615 OID 19570)
+-- Name: workforce; Type: SCHEMA; Schema: -; Owner: postgres
+--
+
+CREATE SCHEMA workforce;
+
+
+ALTER SCHEMA workforce OWNER TO postgres;
+
+--
+-- TOC entry 1634 (class 1247 OID 19670)
+-- Name: Role; Type: TYPE; Schema: workforce; Owner: postgres
+--
+
+CREATE TYPE workforce."Role" AS ENUM (
+    'SUPER_ADMIN',
+    'HR_ADMIN',
+    'HOD',
+    'SUPERVISOR',
+    'EMPLOYEE'
+);
+
+
+ALTER TYPE workforce."Role" OWNER TO postgres;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- TOC entry 599 (class 1259 OID 19743)
+-- Name: AttendanceCorrection; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."AttendanceCorrection" (
+    id text NOT NULL,
+    "employeeId" integer NOT NULL,
+    "workDate" date NOT NULL,
+    "attendanceResultId" text,
+    reason text NOT NULL,
+    "requestedByUserId" text NOT NULL,
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    "approvedByUserId" text,
+    "approvalNote" text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL,
+    type text DEFAULT 'IN'::text,
+    "correctedTime" timestamp(3) without time zone
+);
+
+
+ALTER TABLE workforce."AttendanceCorrection" OWNER TO postgres;
+
+--
+-- TOC entry 598 (class 1259 OID 19734)
+-- Name: AttendanceException; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."AttendanceException" (
+    id text NOT NULL,
+    "employeeId" integer NOT NULL,
+    "workDate" date NOT NULL,
+    "attendanceResultId" text,
+    type text NOT NULL,
+    details text,
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    "assignedToUserId" text,
+    "resolvedByUserId" text,
+    "resolutionNote" text,
+    "resolvedAt" timestamp(3) without time zone,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL
+);
+
+
+ALTER TABLE workforce."AttendanceException" OWNER TO postgres;
+
+--
+-- TOC entry 596 (class 1259 OID 19712)
+-- Name: AttendancePunch; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."AttendancePunch" (
+    id text NOT NULL,
+    "employeeId" integer NOT NULL,
+    "punchTime" timestamp(3) without time zone NOT NULL,
+    "deviceName" text,
+    source text DEFAULT 'BIOMETRIC'::text NOT NULL,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+ALTER TABLE workforce."AttendancePunch" OWNER TO postgres;
+
+--
+-- TOC entry 597 (class 1259 OID 19721)
+-- Name: AttendanceResult; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."AttendanceResult" (
+    id text NOT NULL,
+    "employeeId" integer NOT NULL,
+    "workDate" date NOT NULL,
+    "shiftTemplateId" text,
+    "shiftAssignmentId" text,
+    sequence integer DEFAULT 1 NOT NULL,
+    "actualIn" timestamp(3) without time zone,
+    "actualOut" timestamp(3) without time zone,
+    "workedMinutes" integer DEFAULT 0 NOT NULL,
+    "lateMinutes" integer DEFAULT 0 NOT NULL,
+    "earlyExitMinutes" integer DEFAULT 0 NOT NULL,
+    "overtimeMinutes" integer DEFAULT 0 NOT NULL,
+    status text NOT NULL,
+    remarks text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL,
+    "breakMinutes" integer DEFAULT 0
+);
+
+
+ALTER TABLE workforce."AttendanceResult" OWNER TO postgres;
+
+--
+-- TOC entry 603 (class 1259 OID 19777)
+-- Name: AuditLog; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."AuditLog" (
+    id text NOT NULL,
+    "userId" text NOT NULL,
+    action text NOT NULL,
+    entity text,
+    "entityId" text,
+    "beforeJson" text,
+    "afterJson" text,
+    details text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+ALTER TABLE workforce."AuditLog" OWNER TO postgres;
+
+--
+-- TOC entry 602 (class 1259 OID 19769)
+-- Name: Holiday; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."Holiday" (
+    id text NOT NULL,
+    name text NOT NULL,
+    "holidayDate" date NOT NULL,
+    description text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+ALTER TABLE workforce."Holiday" OWNER TO postgres;
+
+--
+-- TOC entry 601 (class 1259 OID 19760)
+-- Name: LeaveRequest; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."LeaveRequest" (
+    id text NOT NULL,
+    "employeeId" integer NOT NULL,
+    "leaveTypeId" text NOT NULL,
+    "startDate" date NOT NULL,
+    "endDate" date NOT NULL,
+    reason text NOT NULL,
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    "requestedByUserId" text NOT NULL,
+    "approvedByUserId" text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL
+);
+
+
+ALTER TABLE workforce."LeaveRequest" OWNER TO postgres;
+
+--
+-- TOC entry 600 (class 1259 OID 19752)
+-- Name: LeaveType; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."LeaveType" (
+    id text NOT NULL,
+    name text NOT NULL,
+    code text NOT NULL,
+    description text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+ALTER TABLE workforce."LeaveType" OWNER TO postgres;
+
+--
+-- TOC entry 595 (class 1259 OID 19702)
+-- Name: ShiftAssignment; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."ShiftAssignment" (
+    id text NOT NULL,
+    "employeeId" integer NOT NULL,
+    "shiftTemplateId" text NOT NULL,
+    "workDate" date NOT NULL,
+    sequence integer DEFAULT 1 NOT NULL,
+    status text DEFAULT 'SCHEDULED'::text NOT NULL,
+    notes text,
+    "assignedByUserId" text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL
+);
+
+
+ALTER TABLE workforce."ShiftAssignment" OWNER TO postgres;
+
+--
+-- TOC entry 594 (class 1259 OID 19691)
+-- Name: ShiftTemplate; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."ShiftTemplate" (
+    id text NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL,
+    "startTime" text NOT NULL,
+    "endTime" text NOT NULL,
+    color text DEFAULT '#6B7280'::text NOT NULL,
+    "graceLate" integer DEFAULT 15 NOT NULL,
+    "graceEarly" integer DEFAULT 15 NOT NULL,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL,
+    "breakMinutes" integer DEFAULT 60
+);
+
+
+ALTER TABLE workforce."ShiftTemplate" OWNER TO postgres;
+
+--
+-- TOC entry 593 (class 1259 OID 19681)
+-- Name: User; Type: TABLE; Schema: workforce; Owner: postgres
+--
+
+CREATE TABLE workforce."User" (
+    id text NOT NULL,
+    name text NOT NULL,
+    email text NOT NULL,
+    "passwordHash" text NOT NULL,
+    role workforce."Role" DEFAULT 'EMPLOYEE'::workforce."Role" NOT NULL,
+    "employeeId" integer,
+    "departmentId" integer,
+    "isActive" boolean DEFAULT true NOT NULL,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL
+);
+
+
+ALTER TABLE workforce."User" OWNER TO postgres;
+
+--
+-- TOC entry 5693 (class 0 OID 19743)
+-- Dependencies: 599
+-- Data for Name: AttendanceCorrection; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."AttendanceCorrection" (id, "employeeId", "workDate", "attendanceResultId", reason, "requestedByUserId", status, "approvedByUserId", "approvalNote", "createdAt", "updatedAt", type, "correctedTime") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5692 (class 0 OID 19734)
+-- Dependencies: 598
+-- Data for Name: AttendanceException; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."AttendanceException" (id, "employeeId", "workDate", "attendanceResultId", type, details, status, "assignedToUserId", "resolvedByUserId", "resolutionNote", "resolvedAt", "createdAt", "updatedAt") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5690 (class 0 OID 19712)
+-- Dependencies: 596
+-- Data for Name: AttendancePunch; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."AttendancePunch" (id, "employeeId", "punchTime", "deviceName", source, "createdAt") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5691 (class 0 OID 19721)
+-- Dependencies: 597
+-- Data for Name: AttendanceResult; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."AttendanceResult" (id, "employeeId", "workDate", "shiftTemplateId", "shiftAssignmentId", sequence, "actualIn", "actualOut", "workedMinutes", "lateMinutes", "earlyExitMinutes", "overtimeMinutes", status, remarks, "createdAt", "updatedAt", "breakMinutes") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5697 (class 0 OID 19777)
+-- Dependencies: 603
+-- Data for Name: AuditLog; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."AuditLog" (id, "userId", action, entity, "entityId", "beforeJson", "afterJson", details, "createdAt") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5696 (class 0 OID 19769)
+-- Dependencies: 602
+-- Data for Name: Holiday; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."Holiday" (id, name, "holidayDate", description, "createdAt") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5695 (class 0 OID 19760)
+-- Dependencies: 601
+-- Data for Name: LeaveRequest; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."LeaveRequest" (id, "employeeId", "leaveTypeId", "startDate", "endDate", reason, status, "requestedByUserId", "approvedByUserId", "createdAt", "updatedAt") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5694 (class 0 OID 19752)
+-- Dependencies: 600
+-- Data for Name: LeaveType; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."LeaveType" (id, name, code, description, "createdAt") FROM stdin;
+\.
+
+
+--
+-- TOC entry 5689 (class 0 OID 19702)
+-- Dependencies: 595
+-- Data for Name: ShiftAssignment; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."ShiftAssignment" (id, "employeeId", "shiftTemplateId", "workDate", sequence, status, notes, "assignedByUserId", "createdAt", "updatedAt") FROM stdin;
+cmnzxxgq50001tuv0iuykwfpw	549	cmnzxsgwt0000tuv0eytyuwgr	2026-04-15	1	SCHEDULED	\N	\N	2026-04-15 11:01:48.653	2026-04-15 11:01:48.653
+cmnzy07pw0003tuv0nuw9kabe	549	cmnzxzftb0002tuv06lqltdpk	2026-04-15	2	SCHEDULED	\N	\N	2026-04-15 11:03:56.948	2026-04-15 11:03:56.948
+\.
+
+
+--
+-- TOC entry 5688 (class 0 OID 19691)
+-- Dependencies: 594
+-- Data for Name: ShiftTemplate; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."ShiftTemplate" (id, code, name, "startTime", "endTime", color, "graceLate", "graceEarly", "createdAt", "updatedAt", "breakMinutes") FROM stdin;
+cmnzxsgwt0000tuv0eytyuwgr	MN	Morning	08:00	16:00	#3B82F6	15	15	2026-04-15 10:57:55.612	2026-04-15 10:57:55.612	60
+cmnzxzftb0002tuv06lqltdpk	AF	Afternoon	15:05	16:00	#3B82F6	15	15	2026-04-15 11:03:20.781	2026-04-15 11:03:20.781	60
+\.
+
+
+--
+-- TOC entry 5687 (class 0 OID 19681)
+-- Dependencies: 593
+-- Data for Name: User; Type: TABLE DATA; Schema: workforce; Owner: postgres
+--
+
+COPY workforce."User" (id, name, email, "passwordHash", role, "employeeId", "departmentId", "isActive", "createdAt", "updatedAt") FROM stdin;
+cmnzxqbfv0001tuocpa3q2dzp	HR Manager	hr@fourpoints.com	$2b$10$g5gt3x00Tl1QdtipX0xV8e7oGyxdtwT7jtxc4IOwEqabW4JqQ2siu	HR_ADMIN	\N	\N	t	2026-04-15 10:56:15.211	2026-04-15 10:56:15.211
+cmnzxqbes0000tuocqu1eewck	Admin User	admin@fourpoints.com	$2b$12$3MB7lgPB2ZJzkHN5UiUSQOm4OVofmVLyhRQ4RdiMjbt0VriQ9BBqq	SUPER_ADMIN	\N	\N	t	2026-04-15 10:56:15.171	2026-04-16 13:40:08.205
+\.
+
+
+--
+-- TOC entry 5508 (class 2606 OID 19751)
+-- Name: AttendanceCorrection AttendanceCorrection_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceCorrection"
+    ADD CONSTRAINT "AttendanceCorrection_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5506 (class 2606 OID 19742)
+-- Name: AttendanceException AttendanceException_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceException"
+    ADD CONSTRAINT "AttendanceException_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5502 (class 2606 OID 19720)
+-- Name: AttendancePunch AttendancePunch_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendancePunch"
+    ADD CONSTRAINT "AttendancePunch_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5504 (class 2606 OID 19733)
+-- Name: AttendanceResult AttendanceResult_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceResult"
+    ADD CONSTRAINT "AttendanceResult_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5519 (class 2606 OID 19784)
+-- Name: AuditLog AuditLog_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AuditLog"
+    ADD CONSTRAINT "AuditLog_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5517 (class 2606 OID 19776)
+-- Name: Holiday Holiday_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."Holiday"
+    ADD CONSTRAINT "Holiday_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5514 (class 2606 OID 19768)
+-- Name: LeaveRequest LeaveRequest_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."LeaveRequest"
+    ADD CONSTRAINT "LeaveRequest_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5512 (class 2606 OID 19759)
+-- Name: LeaveType LeaveType_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."LeaveType"
+    ADD CONSTRAINT "LeaveType_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5500 (class 2606 OID 19711)
+-- Name: ShiftAssignment ShiftAssignment_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."ShiftAssignment"
+    ADD CONSTRAINT "ShiftAssignment_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5497 (class 2606 OID 19701)
+-- Name: ShiftTemplate ShiftTemplate_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."ShiftTemplate"
+    ADD CONSTRAINT "ShiftTemplate_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5494 (class 2606 OID 19690)
+-- Name: User User_pkey; Type: CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."User"
+    ADD CONSTRAINT "User_pkey" PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5515 (class 1259 OID 19793)
+-- Name: Holiday_holidayDate_key; Type: INDEX; Schema: workforce; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "Holiday_holidayDate_key" ON workforce."Holiday" USING btree ("holidayDate");
+
+
+--
+-- TOC entry 5509 (class 1259 OID 19792)
+-- Name: LeaveType_code_key; Type: INDEX; Schema: workforce; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "LeaveType_code_key" ON workforce."LeaveType" USING btree (code);
+
+
+--
+-- TOC entry 5510 (class 1259 OID 19791)
+-- Name: LeaveType_name_key; Type: INDEX; Schema: workforce; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "LeaveType_name_key" ON workforce."LeaveType" USING btree (name);
+
+
+--
+-- TOC entry 5498 (class 1259 OID 19790)
+-- Name: ShiftAssignment_employeeId_workDate_sequence_key; Type: INDEX; Schema: workforce; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "ShiftAssignment_employeeId_workDate_sequence_key" ON workforce."ShiftAssignment" USING btree ("employeeId", "workDate", sequence);
+
+
+--
+-- TOC entry 5495 (class 1259 OID 19789)
+-- Name: ShiftTemplate_code_key; Type: INDEX; Schema: workforce; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "ShiftTemplate_code_key" ON workforce."ShiftTemplate" USING btree (code);
+
+
+--
+-- TOC entry 5491 (class 1259 OID 19785)
+-- Name: User_email_key; Type: INDEX; Schema: workforce; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "User_email_key" ON workforce."User" USING btree (email);
+
+
+--
+-- TOC entry 5492 (class 1259 OID 19786)
+-- Name: User_employeeId_key; Type: INDEX; Schema: workforce; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "User_employeeId_key" ON workforce."User" USING btree ("employeeId");
+
+
+--
+-- TOC entry 5533 (class 2606 OID 19879)
+-- Name: AttendanceCorrection AttendanceCorrection_approvedByUserId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceCorrection"
+    ADD CONSTRAINT "AttendanceCorrection_approvedByUserId_fkey" FOREIGN KEY ("approvedByUserId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5534 (class 2606 OID 19869)
+-- Name: AttendanceCorrection AttendanceCorrection_attendanceResultId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceCorrection"
+    ADD CONSTRAINT "AttendanceCorrection_attendanceResultId_fkey" FOREIGN KEY ("attendanceResultId") REFERENCES workforce."AttendanceResult"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5535 (class 2606 OID 19864)
+-- Name: AttendanceCorrection AttendanceCorrection_employeeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceCorrection"
+    ADD CONSTRAINT "AttendanceCorrection_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES public.personnel_employee(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5536 (class 2606 OID 19874)
+-- Name: AttendanceCorrection AttendanceCorrection_requestedByUserId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceCorrection"
+    ADD CONSTRAINT "AttendanceCorrection_requestedByUserId_fkey" FOREIGN KEY ("requestedByUserId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5529 (class 2606 OID 19854)
+-- Name: AttendanceException AttendanceException_assignedToUserId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceException"
+    ADD CONSTRAINT "AttendanceException_assignedToUserId_fkey" FOREIGN KEY ("assignedToUserId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5530 (class 2606 OID 19849)
+-- Name: AttendanceException AttendanceException_attendanceResultId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceException"
+    ADD CONSTRAINT "AttendanceException_attendanceResultId_fkey" FOREIGN KEY ("attendanceResultId") REFERENCES workforce."AttendanceResult"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5531 (class 2606 OID 19844)
+-- Name: AttendanceException AttendanceException_employeeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceException"
+    ADD CONSTRAINT "AttendanceException_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES public.personnel_employee(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5532 (class 2606 OID 19859)
+-- Name: AttendanceException AttendanceException_resolvedByUserId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceException"
+    ADD CONSTRAINT "AttendanceException_resolvedByUserId_fkey" FOREIGN KEY ("resolvedByUserId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5525 (class 2606 OID 19824)
+-- Name: AttendancePunch AttendancePunch_employeeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendancePunch"
+    ADD CONSTRAINT "AttendancePunch_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES public.personnel_employee(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5526 (class 2606 OID 19829)
+-- Name: AttendanceResult AttendanceResult_employeeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceResult"
+    ADD CONSTRAINT "AttendanceResult_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES public.personnel_employee(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5527 (class 2606 OID 19839)
+-- Name: AttendanceResult AttendanceResult_shiftAssignmentId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceResult"
+    ADD CONSTRAINT "AttendanceResult_shiftAssignmentId_fkey" FOREIGN KEY ("shiftAssignmentId") REFERENCES workforce."ShiftAssignment"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5528 (class 2606 OID 19834)
+-- Name: AttendanceResult AttendanceResult_shiftTemplateId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AttendanceResult"
+    ADD CONSTRAINT "AttendanceResult_shiftTemplateId_fkey" FOREIGN KEY ("shiftTemplateId") REFERENCES workforce."ShiftTemplate"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5541 (class 2606 OID 19904)
+-- Name: AuditLog AuditLog_userId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."AuditLog"
+    ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5537 (class 2606 OID 19899)
+-- Name: LeaveRequest LeaveRequest_approvedByUserId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."LeaveRequest"
+    ADD CONSTRAINT "LeaveRequest_approvedByUserId_fkey" FOREIGN KEY ("approvedByUserId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5538 (class 2606 OID 19884)
+-- Name: LeaveRequest LeaveRequest_employeeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."LeaveRequest"
+    ADD CONSTRAINT "LeaveRequest_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES public.personnel_employee(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5539 (class 2606 OID 19889)
+-- Name: LeaveRequest LeaveRequest_leaveTypeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."LeaveRequest"
+    ADD CONSTRAINT "LeaveRequest_leaveTypeId_fkey" FOREIGN KEY ("leaveTypeId") REFERENCES workforce."LeaveType"(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5540 (class 2606 OID 19894)
+-- Name: LeaveRequest LeaveRequest_requestedByUserId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."LeaveRequest"
+    ADD CONSTRAINT "LeaveRequest_requestedByUserId_fkey" FOREIGN KEY ("requestedByUserId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5522 (class 2606 OID 19819)
+-- Name: ShiftAssignment ShiftAssignment_assignedByUserId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."ShiftAssignment"
+    ADD CONSTRAINT "ShiftAssignment_assignedByUserId_fkey" FOREIGN KEY ("assignedByUserId") REFERENCES workforce."User"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5523 (class 2606 OID 19809)
+-- Name: ShiftAssignment ShiftAssignment_employeeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."ShiftAssignment"
+    ADD CONSTRAINT "ShiftAssignment_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES public.personnel_employee(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5524 (class 2606 OID 19814)
+-- Name: ShiftAssignment ShiftAssignment_shiftTemplateId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."ShiftAssignment"
+    ADD CONSTRAINT "ShiftAssignment_shiftTemplateId_fkey" FOREIGN KEY ("shiftTemplateId") REFERENCES workforce."ShiftTemplate"(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5520 (class 2606 OID 19799)
+-- Name: User User_departmentId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."User"
+    ADD CONSTRAINT "User_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES public.personnel_department(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5521 (class 2606 OID 19794)
+-- Name: User User_employeeId_fkey; Type: FK CONSTRAINT; Schema: workforce; Owner: postgres
+--
+
+ALTER TABLE ONLY workforce."User"
+    ADD CONSTRAINT "User_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES public.personnel_employee(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+-- Completed on 2026-04-16 15:24:24
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict Fnekx1IRVf004ZQydRZ8FPdyn6wJTxJoOjigkcEhMNux3Wxx2UeeNTwKL8SZKnV
+
