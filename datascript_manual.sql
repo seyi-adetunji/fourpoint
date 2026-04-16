@@ -209,4 +209,19 @@ DO UPDATE SET
     "isActive" = true,
     "updatedAt" = CURRENT_TIMESTAMP;
 
+
+-- Add the missing columns to ShiftAssignment
+ALTER TABLE workforce."ShiftAssignment" ADD COLUMN IF NOT EXISTS "notes" TEXT;
+ALTER TABLE workforce."ShiftAssignment" ADD COLUMN IF NOT EXISTS "assignedByUserId" TEXT;
+
+-- Also ensured the Foreign Key exists for the person who assigned the shift
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'ShiftAssignment_assignedByUserId_fkey') THEN
+        ALTER TABLE workforce."ShiftAssignment" 
+        ADD CONSTRAINT "ShiftAssignment_assignedByUserId_fkey" 
+        FOREIGN KEY ("assignedByUserId") REFERENCES workforce."User"("id") ON DELETE SET NULL;
+    END IF;
+END $$;
+
  
