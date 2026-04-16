@@ -200,21 +200,19 @@ export default async function ReportsPage() {
         </div>
       </div>
 
-      {/* KPI Section */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+      {/* KPI Section (Big Cards) */}
+      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-10">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon;
           return (
-            <div key={kpi.title} className="card p-5 border-l-4 border-l-primary/10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">{kpi.title}</p>
-                  <p className={`text-2xl font-black mt-1 ${kpi.color}`}>{kpi.value}</p>
-                  <p className="text-[10px] text-gray-500 mt-1">{kpi.subtitle}</p>
-                </div>
-                <div className={`p-2.5 rounded-xl ${kpi.bgColor}`}>
-                  <Icon className={`w-5 h-5 ${kpi.color}`} />
-                </div>
+            <div key={kpi.title} className="big-metric-card animate-slide-up">
+              <div className="big-metric-icon-bg bg-white shadow-sm ring-1 ring-border/50">
+                <Icon className={`w-6 h-6 ${kpi.color}`} />
+              </div>
+              <div>
+                <p className="big-metric-label">{kpi.title}</p>
+                <p className={`big-metric-value ${kpi.color}`}>{kpi.value}</p>
+                <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-widest">{kpi.subtitle}</p>
               </div>
             </div>
           );

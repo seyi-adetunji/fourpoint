@@ -188,6 +188,23 @@
   .metric-icon {
     @apply p-3 rounded-xl;
   }
+
+  /* ─── BIG KPI Metric Card ─── */
+  .big-metric-card {
+    @apply rounded-3xl border border-border bg-card shadow-md overflow-hidden transition-all duration-300 p-8 flex flex-col justify-between min-h-[180px] relative;
+  }
+  .big-metric-card:hover {
+    @apply shadow-xl -translate-y-1 border-primary/20;
+  }
+  .big-metric-value {
+    @apply text-5xl font-black tracking-tight text-primary mt-2;
+  }
+  .big-metric-label {
+    @apply text-xs font-black text-muted-foreground uppercase tracking-[0.2em];
+  }
+  .big-metric-icon-bg {
+    @apply absolute top-6 right-6 p-4 rounded-2xl;
+  }
 }
 
 @layer utilities {

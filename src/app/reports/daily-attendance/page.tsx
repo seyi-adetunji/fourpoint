@@ -305,37 +305,39 @@ export default function DailyAttendanceDashboard() {
         </div>
       )}
 
-      {/* ── Summary Cards ── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard
-          label="Total Staff"
-          value={summary.total}
-          icon={Users}
-          colorClass="text-primary"
-          bgClass="bg-blue-50"
-        />
-        <SummaryCard
-          label="On Shift · Present"
-          value={summary.onShiftPresent}
-          icon={CheckCircle2}
-          colorClass="text-emerald-600"
-          bgClass="bg-emerald-50"
-        />
-        <SummaryCard
-          label="On Shift · Absent"
-          value={summary.onShiftAbsent}
-          icon={XCircle}
-          colorClass="text-red-600"
-          bgClass="bg-red-50"
-        />
-        <SummaryCard
-          label="Off Shift · Present"
-          value={summary.offShiftPresent}
-          icon={AlertTriangle}
-          colorClass="text-orange-600"
-          bgClass="bg-orange-50"
-          critical
-        />
+      {/* ── Summary Cards (Big Cards) ── */}
+      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: "Total Staff", value: summary.total, icon: Users, color: "text-primary", bg: "bg-blue-50" },
+          { label: "On Shift · Present", value: summary.onShiftPresent, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "On Shift · Absent", value: summary.onShiftAbsent, icon: XCircle, color: "text-red-600", bg: "bg-red-50" },
+          { label: "Off Shift · Present", value: summary.offShiftPresent, icon: AlertTriangle, color: "text-orange-600", bg: "bg-orange-50", critical: true },
+        ].map((card) => {
+          const Icon = card.icon;
+          return (
+            <div 
+              key={card.label} 
+              className={`big-metric-card animate-slide-up ${card.critical && card.value > 0 ? "border-red-200 ring-2 ring-red-50" : ""}`}
+            >
+              <div className="big-metric-icon-bg bg-white shadow-sm ring-1 ring-border/50">
+                <Icon className={`w-6 h-6 ${card.color}`} />
+              </div>
+              <div>
+                <p className="big-metric-label">{card.label}</p>
+                <div className="flex items-baseline gap-2">
+                  <p className={`big-metric-value ${card.critical && card.value > 0 ? "text-red-600" : card.color}`}>
+                    {card.value}
+                  </p>
+                </div>
+                {card.critical && card.value > 0 && (
+                  <p className="text-[10px] text-red-500 font-bold mt-2 flex items-center gap-1 uppercase tracking-tighter">
+                    <ShieldAlert className="w-3 h-3" /> Requires attention
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* ── Data Table ── */}

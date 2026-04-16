@@ -116,16 +116,39 @@ export async function AdminDashboard({ session }: { session: Session }) {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((card) => {
+      {/* Primary KPI Section (Big Cards) */}
+      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.slice(0, 4).map((card) => {
           const Icon = card.icon;
           return (
             <Link key={card.title} href={card.href} className="group">
-              <div className="metric-card group-hover:shadow-lg group-hover:border-primary/20 transition-all duration-300">
+              <div className="big-metric-card animate-slide-up">
+                <div className="big-metric-icon-bg bg-white shadow-sm ring-1 ring-border/50">
+                  <Icon className={`w-6 h-6 ${card.color}`} />
+                </div>
+                <div>
+                  <p className="big-metric-label">{card.title}</p>
+                  <p className="big-metric-value">{card.value}</p>
+                </div>
+                <div className="flex items-center gap-1.5 mt-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  View Detail <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Secondary KPI Section */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        {cards.slice(4).map((card) => {
+          const Icon = card.icon;
+          return (
+            <Link key={card.title} href={card.href} className="group">
+              <div className="metric-card group-hover:shadow-lg transition-all duration-300">
                 <div>
                   <p className="metric-label">{card.title}</p>
-                  <p className="metric-value mt-1">{card.value}</p>
+                  <p className="metric-value mt-1 text-2xl">{card.value}</p>
                 </div>
                 <div className={`metric-icon ${card.bgColor}`}>
                   <Icon className={`w-5 h-5 ${card.color}`} />
