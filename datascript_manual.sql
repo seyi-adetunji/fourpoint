@@ -181,3 +181,32 @@ CREATE TABLE IF NOT EXISTS workforce."AuditLog" (
 INSERT INTO workforce."User" ("id", "name", "email", "passwordHash", "role", "isActive")
 VALUES ('admin-init', 'System Admin', 'admin@fourpoints.com', '$2b$12$N9qo8uLOickgx2ZMRZoMyeIjZAgNI9X9697Rwr.5wL05L6E5v6u', 'SUPER_ADMIN', true)
 ON CONFLICT ("email") DO NOTHING;
+
+
+-- 1. Ensure the user exists or update their password if they already do
+INSERT INTO workforce."User" (
+    "id", 
+    "name", 
+    "email", 
+    "passwordHash", 
+    "role", 
+    "isActive",
+    "updatedAt"
+)
+VALUES (
+    'admin-prod-final', 
+    'System Admin', 
+    'admin@fourpoints.com', 
+    '$2b$12$Z5qAGR3A7gc/PQ0iI41mx.R5Ml7NQhtvuIbzlYdvfOX/.vJzZOVXy', -- Hash for password123
+    'SUPER_ADMIN', 
+    true,
+    CURRENT_TIMESTAMP
+)
+ON CONFLICT ("email") 
+DO UPDATE SET 
+    "passwordHash" = EXCLUDED."passwordHash",
+    "role" = 'SUPER_ADMIN',
+    "isActive" = true,
+    "updatedAt" = CURRENT_TIMESTAMP;
+
+ 
