@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { Filter } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { ExportButtons } from "@/components/ExportButtons";
 
 export default async function SummaryReport({
   searchParams,
@@ -67,15 +68,33 @@ export default async function SummaryReport({
     doubleShifts: shiftStats[empId]?.doubleShifts ?? 0,
   }));
 
+  const exportHeaders = [
+    { label: "Employee", key: "name" },
+    { label: "Department", key: "dept" },
+    { label: "Work Days", key: "days" },
+    { label: "Scheduled Shifts", key: "scheduledShifts" },
+    { label: "Double Shifts", key: "doubleShifts" },
+    { label: "Late Minutes", key: "late" },
+    { label: "Early Minutes", key: "early" },
+    { label: "OT Minutes", key: "ot" },
+    { label: "Total Hours", key: "workHrs" },
+  ];
+
+  const exportData = rows.map(r => ({
+    ...r,
+    workHrs: (r.work / 60).toFixed(1)
+  }));
+
   return (
     <div className="page-container animate-fade-in">
-      <div className="page-header">
+      <div className="page-header justify-between">
         <div>
           <h1 className="page-title">Attendance Summary</h1>
           <p className="page-subtitle">
             Individual performance metrics for {format(start, "MMMM yyyy")}
           </p>
         </div>
+        <ExportButtons data={exportData} filename={`payroll_summary_${monthStr}`} headers={exportHeaders} />
       </div>
 
       <div className="card p-4 mb-6">

@@ -42,7 +42,15 @@ const adminNav: NavItemConfig[] = [
     ],
   },
   { name: "Leave", href: "/leave", icon: "CalendarOff" },
-  { name: "Reports", href: "/reports", icon: "BarChart3" },
+  { 
+    name: "Reports", href: "/reports", icon: "BarChart3",
+    children: [
+      { name: "Summary", href: "/reports/summary", icon: "ClipboardCheck" },
+      { name: "Overtime", href: "/reports/overtime", icon: "Clock" },
+      { name: "Variance (Actual vs Plan)", href: "/reports/variance", icon: "ShieldAlert" },
+      { name: "Schedule", href: "/reports/schedule", icon: "Calendar" },
+    ]
+  },
 ];
 
 // Employee-only navigation
