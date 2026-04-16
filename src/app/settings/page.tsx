@@ -33,6 +33,9 @@ export default async function SettingsPage() {
             <button className="text-left px-4 py-3 rounded-lg bg-primary/10 text-primary font-medium text-sm transition-colors">
               Shift Templates
             </button>
+            <a href="/settings/users" className="text-left px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50 font-medium text-sm transition-colors block">
+              User Accounts
+            </a>
             <button className="text-left px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50 font-medium text-sm transition-colors">
               Company Settings
             </button>

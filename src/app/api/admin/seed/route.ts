@@ -90,13 +90,29 @@ export async function GET(request: Request) {
 
     const users = [
       { name: "Admin User", email: "admin@fourpoints.com", role: "SUPER_ADMIN" as Role, employeeId: null, departmentId: null },
-      { name: "HR Manager", email: "hr@fourpoints.com", role: "HR_ADMIN" as Role, employeeId: empMap["EMP007"].id, departmentId: deptMap["Human Resources"].id },
-      { name: "Valentine Ashioma", email: "valentine@fourpoints.com", role: "HOD" as Role, employeeId: empMap["EMP001"].id, departmentId: deptMap["Operations"].id },
-      { name: "Chidinma Eze", email: "chidinma@fourpoints.com", role: "SUPERVISOR" as Role, employeeId: empMap["EMP009"].id, departmentId: deptMap["Housekeeping"].id },
-      { name: "Angela Okafor", email: "angela@fourpoints.com", role: "EMPLOYEE" as Role, employeeId: empMap["EMP003"].id, departmentId: deptMap["Front Office"].id },
-      { name: "Mustapha Ibrahim", email: "mustapha@fourpoints.com", role: "EMPLOYEE" as Role, employeeId: empMap["EMP004"].id, departmentId: deptMap["Kitchen"].id },
-      { name: "Funke Adeyemi", email: "funke@fourpoints.com", role: "HOD" as Role, employeeId: empMap["EMP011"].id, departmentId: deptMap["Operations"].id },
+      { name: "HR Manager", email: "hr@fourpoints.com", role: "HR_ADMIN" as Role, employeeId: empMap["EMP007"]?.id, departmentId: deptMap["Human Resources"]?.id },
+      { name: "Valentine Ashioma", email: "valentine@fourpoints.com", role: "HOD" as Role, employeeId: empMap["EMP001"]?.id, departmentId: deptMap["Operations"]?.id },
+      { name: "Chidinma Eze", email: "chidinma@fourpoints.com", role: "SUPERVISOR" as Role, employeeId: empMap["EMP009"]?.id, departmentId: deptMap["Housekeeping"]?.id },
+      { name: "Angela Okafor", email: "angela@fourpoints.com", role: "EMPLOYEE" as Role, employeeId: empMap["EMP003"]?.id, departmentId: deptMap["Front Office"]?.id },
+      { name: "Mustapha Ibrahim", email: "mustapha@fourpoints.com", role: "EMPLOYEE" as Role, employeeId: empMap["EMP004"]?.id, departmentId: deptMap["Kitchen"]?.id },
+      { name: "Funke Adeyemi", email: "funke@fourpoints.com", role: "HOD" as Role, employeeId: empMap["EMP011"]?.id, departmentId: deptMap["Operations"]?.id },
     ];
+
+    for (const u of users) {
+      await prisma.user.upsert({
+        where: { email: u.email },
+        update: {
+          name: u.name,
+          role: u.role,
+          employeeId: u.employeeId,
+          departmentId: u.departmentId,
+        },
+        create: {
+          ...u,
+          passwordHash,
+        },
+      });
+    }
 
     // ─── 7. Shift Assignments (7-day rota) ─────────────────────────────────
     const baseDate = new Date();

@@ -12,6 +12,7 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
     where: { id: Number(id) },
     include: {
       department: true,
+      users: true,
       shiftAssignments: {
         include: { shiftTemplate: true },
         orderBy: { workDate: "desc" },
@@ -59,6 +60,22 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
         <div className="space-y-6">
           <Card title="Employee Profile">
             <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-border">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">User Account</p>
+                  {employee.users.length > 0 ? (
+                    <div className="flex items-center gap-2">
+                       <span className="text-sm font-medium text-primary">{employee.users[0].email}</span>
+                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold uppercase">{employee.users[0].role}</span>
+                    </div>
+                  ) : (
+                    <Link href="/settings/users" className="text-xs font-semibold text-accent hover:underline flex items-center gap-1">
+                      Create Login Account →
+                    </Link>
+                  )}
+                </div>
+              </div>
               <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-border">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <div>

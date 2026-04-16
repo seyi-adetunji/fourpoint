@@ -42,6 +42,7 @@ const adminNav: NavItemConfig[] = [
     ],
   },
   { name: "Leave", href: "/leave", icon: "CalendarOff" },
+  { name: "User Accounts", href: "/settings/users", icon: "UserCircle" },
   { 
     name: "Reports", href: "/reports", icon: "BarChart3",
     children: [
