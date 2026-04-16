@@ -11,10 +11,10 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { attendanceResultId, reason, proposedTimeIn, proposedTimeOut } = body;
+    const { attendanceResultId, reason, type, correctedTime } = body;
 
-    if (!attendanceResultId || !reason) {
-      return NextResponse.json({ message: "Result ID and reason are required." }, { status: 400 });
+    if (!attendanceResultId || !reason || !type || !correctedTime) {
+      return NextResponse.json({ message: "Result ID, reason, type, and corrected time are required." }, { status: 400 });
     }
 
     const result = await prisma.attendanceResult.findUnique({ where: { id: attendanceResultId } });
@@ -27,6 +27,8 @@ export async function POST(req: Request) {
         employeeId: session.user.employeeId,
         workDate: result.workDate,
         attendanceResultId,
+        type,
+        correctedTime: new Date(correctedTime),
         reason,
         requestedByUserId: session.user.id,
         status: "PENDING"
