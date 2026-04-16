@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
-import { Filter } from "lucide-react";
+import { Filter, TrendingUp, Zap, Clock, Users, Timer } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ExportButtons } from "@/components/ExportButtons";
 
@@ -53,7 +53,7 @@ export default async function SummaryReport({
         name: r.employee.fullName,
         dept: r.employee.department?.name || "N/A",
         days: 0, late: 0, early: 0, ot: 0, work: 0,
-      };
+       };
     empStats[r.employeeId].days += 1;
     empStats[r.employeeId].late += r.lateMinutes;
     empStats[r.employeeId].early += r.earlyExitMinutes;
@@ -67,6 +67,19 @@ export default async function SummaryReport({
     scheduledShifts: shiftStats[empId]?.total ?? 0,
     doubleShifts: shiftStats[empId]?.doubleShifts ?? 0,
   }));
+
+  // Aggregated totals for KPIs
+  const totalDays = rows.reduce((sum, r) => sum + r.days, 0);
+  const totalLate = rows.reduce((sum, r) => sum + r.late, 0);
+  const totalDbl = rows.reduce((sum, r) => sum + r.doubleShifts, 0);
+  const totalOT = rows.reduce((sum, r) => sum + r.ot, 0);
+
+  const kpis = [
+    { label: "Total Work Days", value: totalDays, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: "Double Shifts", value: totalDbl, icon: Zap, color: "text-orange-600", bg: "bg-orange-50" },
+    { label: "Late Minutes", value: `${totalLate}m`, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "OT Hours", value: `${Math.round(totalOT / 60)}h`, icon: Timer, color: "text-indigo-600", bg: "bg-indigo-50" },
+  ];
 
   const exportHeaders = [
     { label: "Employee", key: "name" },
@@ -95,6 +108,21 @@ export default async function SummaryReport({
           </p>
         </div>
         <ExportButtons data={exportData} filename={`payroll_summary_${monthStr}`} headers={exportHeaders} />
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {kpis.map((k) => (
+          <div key={k.label} className="card p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{k.label}</p>
+              <p className={`text-xl font-black ${k.color}`}>{k.value}</p>
+            </div>
+            <div className={`p-2 rounded-lg ${k.bg}`}>
+              <k.icon className={`w-4 h-4 ${k.color}`} />
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="card p-4 mb-6">

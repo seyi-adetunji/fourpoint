@@ -40,8 +40,8 @@ export default async function ShiftsPage({
   const role = (session?.user as any)?.role ?? "EMPLOYEE";
   const userDeptId = (session?.user as any)?.departmentId as number | undefined;
 
-  // HOD: scope to own department only
-  const isHOD = role === "HOD";
+  // Management roles that scope to own department
+  const isHOD = role === "HOD" || role === "DEPT_ADMIN";
   const isAdmin = ["SUPER_ADMIN", "HR_ADMIN"].includes(role);
 
   const selectedDate = resolvedSearchParams?.date

@@ -69,6 +69,7 @@ function getNavForRole(role: string): NavItemConfig[] {
     case "HR_ADMIN":
       return adminNav;
     case "HOD":
+    case "DEPT_ADMIN":
       return adminNav.filter(item => 
         !["Departments", "Shift Templates"].includes(item.name)
       );

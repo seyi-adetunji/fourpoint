@@ -1,10 +1,14 @@
 import Link from "next/link";
-export const dynamic = "force-dynamic";
+import prisma from "@/lib/prisma";
+import { 
+  getUTCMidnight 
+} from "@/lib/dateUtils";
 import {
   ClipboardList, Users, Clock, Timer, AlertTriangle,
   CalendarOff, Layers, Fingerprint, UserX, BarChart3, Building2, FileText, CalendarRange,
-  ShieldAlert
+  ShieldAlert, TrendingUp, Zap, ZapOff
 } from "lucide-react";
+import { format, subDays } from "date-fns";
 
 const reports = [
   { 
@@ -122,14 +126,103 @@ const reports = [
   },
 ];
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  const today = getUTCMidnight();
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const [
+    monthlyStats,
+    pendingExceptions,
+    todayShifts,
+    todayPresent
+  ] = await Promise.all([
+    prisma.attendanceResult.aggregate({
+      where: { workDate: { gte: startOfMonth, lte: today } },
+      _sum: {
+        lateMinutes: true,
+        earlyExitMinutes: true,
+        overtimeMinutes: true,
+        workedMinutes: true
+      },
+      _count: { id: true }
+    }),
+    prisma.attendanceException.count({ where: { status: "PENDING" } }),
+    prisma.shiftAssignment.count({ where: { workDate: today, status: { not: "CANCELLED" } } }),
+    prisma.attendanceResult.count({
+      where: { workDate: today, status: { in: ["PRESENT", "LATE", "EARLY_EXIT"] } }
+    })
+  ]);
+
+  const attendanceRate = todayShifts > 0 ? Math.round((todayPresent / todayShifts) * 100) : 0;
+  const totalLeakage = (monthlyStats._sum.lateMinutes || 0) + (monthlyStats._sum.earlyExitMinutes || 0);
+
+  const kpiCards = [
+    {
+      title: "Attendance Health",
+      value: `${attendanceRate}%`,
+      subtitle: "Scheduled vs Actual Today",
+      icon: TrendingUp,
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-50"
+    },
+    {
+      title: "Labor Leakage",
+      value: `${Math.round(totalLeakage / 60)}h`,
+      subtitle: "Late & Early Exits (MTD)",
+      icon: ZapOff,
+      color: "text-red-600",
+      bgColor: "bg-red-50"
+    },
+    {
+      title: "Overtime Applied",
+      value: `${Math.round((monthlyStats._sum.overtimeMinutes || 0) / 60)}h`,
+      subtitle: "Total Approved OT (MTD)",
+      icon: Timer,
+      color: "text-indigo-600",
+      bgColor: "bg-indigo-50"
+    },
+    {
+      title: "Action Required",
+      value: pendingExceptions,
+      subtitle: "Pending Exceptions",
+      icon: AlertTriangle,
+      color: "text-amber-600",
+      bgColor: "bg-amber-50"
+    }
+  ];
+
   return (
     <div className="page-container animate-fade-in">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Reports</h1>
-          <p className="page-subtitle">Enterprise reporting and compliance analytics</p>
+          <h1 className="page-title">Enterprise Reports</h1>
+          <p className="page-subtitle">Historical analytics and compliance tracking</p>
         </div>
+      </div>
+
+      {/* KPI Section */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        {kpiCards.map((kpi) => {
+          const Icon = kpi.icon;
+          return (
+            <div key={kpi.title} className="card p-5 border-l-4 border-l-primary/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">{kpi.title}</p>
+                  <p className={`text-2xl font-black mt-1 ${kpi.color}`}>{kpi.value}</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{kpi.subtitle}</p>
+                </div>
+                <div className={`p-2.5 rounded-xl ${kpi.bgColor}`}>
+                  <Icon className={`w-5 h-5 ${kpi.color}`} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mb-4">
+        <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Module Index</h2>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

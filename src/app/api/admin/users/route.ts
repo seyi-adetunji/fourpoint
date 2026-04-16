@@ -31,7 +31,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "SUPER_ADMIN") {
+  if (!session || (session.user.role !== "SUPER_ADMIN" && session.user.role !== "HR_ADMIN")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -41,6 +41,11 @@ export async function POST(request: Request) {
 
     if (!name || !email || !password || !role) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    // Only SUPER_ADMIN can create another SUPER_ADMIN
+    if (role === "SUPER_ADMIN" && session.user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "Only Super Admins can create Super Admins" }, { status: 403 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);

@@ -70,11 +70,26 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     PERMISSIONS.LEAVE_APPROVE,
     PERMISSIONS.REPORTS_VIEW_ALL,
     PERMISSIONS.SETTINGS_VIEW,
+    PERMISSIONS.SETTINGS_MANAGE,
     PERMISSIONS.DASHBOARD_ADMIN,
     PERMISSIONS.SELF_SERVICE,
   ],
   
   HOD: [
+    PERMISSIONS.EMPLOYEES_VIEW_DEPARTMENT,
+    PERMISSIONS.SHIFTS_VIEW_DEPARTMENT,
+    PERMISSIONS.SHIFTS_MANAGE,
+    PERMISSIONS.ATTENDANCE_VIEW_DEPARTMENT,
+    PERMISSIONS.EXCEPTIONS_VIEW_DEPARTMENT,
+    PERMISSIONS.EXCEPTIONS_RESOLVE,
+    PERMISSIONS.LEAVE_APPROVE,
+    PERMISSIONS.LEAVE_REQUEST_OWN,
+    PERMISSIONS.REPORTS_VIEW_DEPARTMENT,
+    PERMISSIONS.DASHBOARD_HOD,
+    PERMISSIONS.SELF_SERVICE,
+  ],
+
+  DEPT_ADMIN: [
     PERMISSIONS.EMPLOYEES_VIEW_DEPARTMENT,
     PERMISSIONS.SHIFTS_VIEW_DEPARTMENT,
     PERMISSIONS.SHIFTS_MANAGE,
@@ -247,8 +262,8 @@ export function canAccessDepartment(
   // SUPER_ADMIN and HR_ADMIN can access all departments
   if (role === 'SUPER_ADMIN' || role === 'HR_ADMIN') return true;
   
-  // HOD and SUPERVISOR can only access their own department
-  if (role === 'HOD' || role === 'SUPERVISOR') {
+  // HOD, DEPT_ADMIN and SUPERVISOR can only access their own department
+  if (role === 'HOD' || role === 'DEPT_ADMIN' || role === 'SUPERVISOR') {
     return userDepartmentId != null && userDepartmentId === targetDepartmentId;
   }
   
@@ -266,7 +281,7 @@ export function isAdminRole(role: Role | string): boolean {
  * Check if the role is a management-level role (admin + HOD)
  */
 export function isManagementRole(role: Role | string): boolean {
-  return role === 'SUPER_ADMIN' || role === 'HR_ADMIN' || role === 'HOD';
+  return role === 'SUPER_ADMIN' || role === 'HR_ADMIN' || role === 'HOD' || role === 'DEPT_ADMIN';
 }
 
 /**

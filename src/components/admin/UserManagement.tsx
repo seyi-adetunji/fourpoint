@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Shield, User, Mail, Building2, Trash2, Edit2, Loader2 } from 'lucide-react';
 import { Role } from '@prisma/client';
+import { useSession } from 'next-auth/react';
 
 interface UserWithData {
   id: string;
@@ -110,6 +111,7 @@ export default function UserManagement() {
                         user.role === 'SUPER_ADMIN' ? 'bg-red-100 text-red-700' :
                         user.role === 'HR_ADMIN' ? 'bg-purple-100 text-purple-700' :
                         user.role === 'HOD' ? 'bg-blue-100 text-blue-700' :
+                        user.role === 'DEPT_ADMIN' ? 'bg-indigo-100 text-indigo-700' :
                         'bg-gray-100 text-gray-700'
                       }`}>
                         <Shield className="w-3 h-3" />
@@ -172,7 +174,8 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
   const [departments, setDepartments] = useState<{id: number, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const { data: session } = useSession() as any;
+  const currentRole = session?.user?.role;
 
   useEffect(() => {
     async function loadData() {
@@ -279,8 +282,9 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
                 <option value="EMPLOYEE">Employee</option>
                 <option value="SUPERVISOR">Supervisor</option>
                 <option value="HOD">HOD</option>
+                <option value="DEPT_ADMIN">Dept Admin (Assistant)</option>
                 <option value="HR_ADMIN">HR Admin</option>
-                <option value="SUPER_ADMIN">Super Admin</option>
+                {currentRole === 'SUPER_ADMIN' && <option value="SUPER_ADMIN">Super Admin</option>}
               </select>
             </div>
             <div className="space-y-1">
