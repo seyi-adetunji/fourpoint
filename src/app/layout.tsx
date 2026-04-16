@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         <Providers>
           <MobileNavProvider>
             <div className="flex h-screen overflow-hidden">

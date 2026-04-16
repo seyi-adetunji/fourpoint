@@ -170,10 +170,11 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
     employeeId: '',
     departmentId: '',
   });
-  const [employees, setEmployees] = useState<{id: number, fullName: string, empCode: string}[]>([]);
+  const [allEmployees, setAllEmployees] = useState<{id: number, fullName: string, empCode: string, departmentId?: number | null}[]>([]);
   const [departments, setDepartments] = useState<{id: number, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const { data: session } = useSession() as any;
   const currentRole = session?.user?.role;
 
@@ -185,10 +186,11 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
           fetch('/api/departments')
         ]);
         const [empData, deptData] = await Promise.all([empRes.json(), deptRes.json()]);
-        setEmployees(empData);
-        setDepartments(deptData);
+        // Guard: API may return an error object instead of an array
+        setAllEmployees(Array.isArray(empData) ? empData : []);
+        setDepartments(Array.isArray(deptData) ? deptData : []);
       } catch (e) {
-        console.error(e);
+        console.error('Failed to load form data:', e);
       } finally {
         setLoading(false);
       }
@@ -196,8 +198,39 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
     loadData();
   }, []);
 
+  // Filter employees by selected department (if one is chosen)
+  const filteredEmployees = formData.departmentId
+    ? allEmployees.filter(e => String(e.departmentId) === formData.departmentId)
+    : allEmployees;
+
+  // When department changes, clear any employee selection that doesn't belong
+  function handleDepartmentChange(deptId: string) {
+    const empStillValid = allEmployees.find(
+      e => String(e.id) === formData.employeeId && String(e.departmentId) === deptId
+    );
+    setFormData(prev => ({
+      ...prev,
+      departmentId: deptId,
+      employeeId: deptId && !empStillValid ? '' : prev.employeeId,
+    }));
+  }
+
+  // Auto-fill department when employee is selected
+  function handleEmployeeChange(empId: string) {
+    const emp = allEmployees.find(e => String(e.id) === empId);
+    setFormData(prev => ({
+      ...prev,
+      employeeId: empId,
+      departmentId: emp?.departmentId ? String(emp.departmentId) : prev.departmentId,
+    }));
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
     setSubmitting(true);
     setError('');
 
@@ -221,59 +254,64 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
     }
   };
 
+  // Roles that require a department assignment
+  const deptRequiredRoles = ['HOD', 'DEPT_ADMIN', 'SUPERVISOR'];
+  const isDeptRequired = deptRequiredRoles.includes(formData.role);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div className="p-6 border-b border-border bg-gray-50/50">
           <h3 className="text-xl font-bold text-gray-900">Create New User</h3>
-          <p className="text-sm text-gray-500 mt-1">Assign roles and link to employees</p>
+          <p className="text-sm text-gray-500 mt-1">Assign roles and link to employee profiles</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
           {error && (
-            <div className="p-3 text-sm bg-red-50 text-red-600 rounded-lg border border-red-100 italic">
+            <div className="p-3 text-sm bg-red-50 text-red-600 rounded-lg border border-red-100 flex items-start gap-2">
+              <span className="text-red-400 mt-0.5">⚠</span>
               {error}
             </div>
           )}
 
-          <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Full Name</label>
-            <input
-              required
-              className="input w-full"
-              placeholder="e.g. John Doe"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Email Address</label>
-            <input
-              required
-              type="email"
-              className="input w-full"
-              placeholder="user@example.com"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Password</label>
-            <input
-              required
-              type="password"
-              className="input w-full"
-              placeholder="Min 6 characters"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            />
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 space-y-1">
+              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Full Name *</label>
+              <input
+                required
+                className="input w-full"
+                placeholder="e.g. John Doe"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+            </div>
+
+            <div className="col-span-2 space-y-1">
+              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Email Address *</label>
+              <input
+                required
+                type="email"
+                className="input w-full"
+                placeholder="user@fourpoints.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+
+            <div className="col-span-2 space-y-1">
+              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Password *</label>
+              <input
+                required
+                type="password"
+                className="input w-full"
+                placeholder="Min 6 characters"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              />
+            </div>
+
             <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Role</label>
+              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Role *</label>
               <select
                 className="input w-full"
                 value={formData.role}
@@ -287,34 +325,52 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
                 {currentRole === 'SUPER_ADMIN' && <option value="SUPER_ADMIN">Super Admin</option>}
               </select>
             </div>
+
             <div className="space-y-1">
-              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Department</label>
+              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">
+                Department {isDeptRequired && <span className="text-red-400">*</span>}
+              </label>
               <select
+                required={isDeptRequired}
                 className="input w-full"
                 value={formData.departmentId}
-                onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+                onChange={(e) => handleDepartmentChange(e.target.value)}
+                disabled={loading}
               >
-                <option value="">N/A</option>
+                <option value="">{loading ? 'Loading...' : 'N/A (All-access)'}</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Link to Employee Profile</label>
+            <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">
+              Link to Employee Profile
+              <span className="ml-1 text-gray-400 font-normal normal-case text-[10px]">
+                {formData.departmentId && filteredEmployees.length !== allEmployees.length
+                  ? `(${filteredEmployees.length} in selected dept)`
+                  : `(${allEmployees.length} total)`}
+              </span>
+            </label>
             <select
               className="input w-full"
               value={formData.employeeId}
-              onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+              onChange={(e) => handleEmployeeChange(e.target.value)}
+              disabled={loading}
             >
-              <option value="">Not linked</option>
-              {employees.map(e => (
+              <option value="">{loading ? 'Loading employees...' : 'Not linked'}</option>
+              {filteredEmployees.map(e => (
                 <option key={e.id} value={e.id}>{e.fullName} ({e.empCode})</option>
               ))}
             </select>
+            {formData.departmentId && filteredEmployees.length === 0 && !loading && (
+              <p className="text-[10px] text-amber-600 font-semibold mt-1">
+                ⚠ No employees found in this department
+              </p>
+            )}
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-border mt-6">
+          <div className="flex justify-end gap-3 pt-4 border-t border-border mt-2">
             <button
               type="button"
               onClick={onClose}
@@ -325,7 +381,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || loading}
               className="btn-primary"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create User'}
