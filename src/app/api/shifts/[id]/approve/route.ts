@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 
 /**
  * POST /api/shifts/[id]/approve
@@ -30,6 +31,9 @@ export async function POST(
         status: action === "approve" ? "SCHEDULED" : "CANCELLED",
       },
     });
+
+    revalidatePath("/shifts");
+    revalidatePath("/shifts?status=PENDING_APPROVAL");
 
     return NextResponse.json(updated);
   } catch (err) {

@@ -7,6 +7,7 @@ import GroupEditShiftModal from "@/components/GroupEditShiftModal";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ExportButtons } from "@/components/ExportButtons";
+import { ShiftsTableClient } from "@/components/shifts/ShiftsTableClient";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,27 @@ export default async function ShiftsPage({
   }
   const groupList = Array.from(groups.values());
 
+  const serializableGroups = groupList.map(group =>
+    group.map(a => ({
+      id: a.id,
+      employeeId: a.employeeId,
+      workDate: a.workDate.toISOString(),
+      status: a.status,
+      sequence: a.sequence,
+      employee: {
+        fullName: a.employee.fullName,
+        empCode: a.employee.empCode,
+        department: a.employee.department ? { name: a.employee.department.name } : null,
+      },
+      shiftTemplate: {
+        name: a.shiftTemplate.name,
+        startTime: a.shiftTemplate.startTime,
+        endTime: a.shiftTemplate.endTime,
+        color: a.shiftTemplate.color,
+      },
+    }))
+  );
+
   return (
     <div className="page-container animate-fade-in">
       <div className="page-header">
@@ -212,101 +234,12 @@ export default async function ShiftsPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase border-b border-border bg-gray-50/30">
-              <tr>
-                <th className="px-5 py-3.5 font-semibold">Date</th>
-                <th className="px-5 py-3.5 font-semibold">Employee</th>
-                <th className="px-5 py-3.5 font-semibold">Department</th>
-                <th className="px-5 py-3.5 font-semibold">Shifts</th>
-                <th className="px-5 py-3.5 font-semibold">Status</th>
-                {(isAdmin || isHOD) && (
-                  <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {groupList.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-muted-foreground">
-                    No shift assignments found. Click <strong>Assign Shift</strong> to get started.
-                  </td>
-                </tr>
-              ) : (
-                groupList.map((group) => {
-                  const first = group[0];
-                  const label = shiftCountLabel(group.length);
-                  return (
-                    <tr
-                      key={`${first.employeeId}|${first.workDate.toISOString()}`}
-                      className="hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="px-5 py-3.5 font-medium text-gray-900 whitespace-nowrap">
-                        {format(first.workDate, "MMM dd, yyyy")}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="font-medium text-gray-900">{first.employee.fullName}</div>
-                        <span className="text-xs text-muted-foreground font-mono">{first.employee.empCode}</span>
-                      </td>
-                      <td className="px-5 py-3.5 text-gray-600">
-                        {first.employee.department?.name || "—"}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex flex-col gap-1">
-                          {group.length > 1 && (
-                            <span className="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200 mb-0.5">
-                              <span>⚡</span> {label}
-                            </span>
-                          )}
-                          {group.map((a) => (
-                            <div key={a.id} className="flex items-center gap-1.5">
-                              {group.length > 1 && (
-                                <span className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold bg-gray-200 text-gray-500">
-                                  {a.sequence}
-                                </span>
-                              )}
-                              <span
-                                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border"
-                                style={{
-                                  backgroundColor: (a.shiftTemplate.color || "#6b7280") + "18",
-                                  color: a.shiftTemplate.color || "#6b7280",
-                                  borderColor: (a.shiftTemplate.color || "#6b7280") + "35",
-                                }}
-                              >
-                                {a.shiftTemplate.name}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">
-                                {a.shiftTemplate.startTime}–{a.shiftTemplate.endTime}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex flex-col gap-0.5">
-                          {group.map((a) => (
-                            <span
-                              key={a.id}
-                              className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border w-fit ${STATUS_STYLES[a.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-                            >
-                              {a.status.replace(/_/g, " ")}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      {(isAdmin || isHOD) && (
-                        <td className="px-5 py-3.5 text-right">
-                          <GroupEditShiftModal assignments={group} readOnly={isHOD} />
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ShiftsTableClient
+          initialGroups={serializableGroups}
+          isAdmin={isAdmin}
+          isHOD={isHOD}
+          statusFilter={statusFilter}
+        />
       </div>
     </div>
   );

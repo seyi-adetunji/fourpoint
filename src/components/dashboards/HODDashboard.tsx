@@ -85,6 +85,28 @@ export async function HODDashboard({ session }: { session: Session }) {
         </div>
       </div>
 
+      {pendingShiftsCount > 0 && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Calendar className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-blue-800">
+                {pendingShiftsCount} shift request{pendingShiftsCount > 1 ? "s" : ""} awaiting HR approval
+              </p>
+              <p className="text-xs text-blue-600">Your submitted shifts are pending HR review</p>
+            </div>
+          </div>
+          <Link 
+            href="/shifts?status=PENDING_APPROVAL" 
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            View Requests
+          </Link>
+        </div>
+      )}
+
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {
           const Icon = card.icon;

@@ -117,6 +117,28 @@ export async function AdminDashboard({ session }: { session: Session }) {
         </div>
       </div>
 
+      {pendingShiftCount > 0 && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <CalendarOff className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">
+                {pendingShiftCount} shift request{pendingShiftCount > 1 ? "s" : ""} awaiting approval
+              </p>
+              <p className="text-xs text-amber-600">Review and approve shift requests from HODs</p>
+            </div>
+          </div>
+          <Link 
+            href="/shifts?status=PENDING_APPROVAL" 
+            className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
+          >
+            Review Now
+          </Link>
+        </div>
+      )}
+
       {/* Primary KPI Section (Big Cards) */}
       <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
         {cards.slice(0, 4).map((card) => {

@@ -319,6 +319,7 @@ exports.Role = exports.$Enums.Role = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   HR_ADMIN: 'HR_ADMIN',
   HOD: 'HOD',
+  DEPT_ADMIN: 'DEPT_ADMIN',
   SUPERVISOR: 'SUPERVISOR',
   EMPLOYEE: 'EMPLOYEE'
 };
