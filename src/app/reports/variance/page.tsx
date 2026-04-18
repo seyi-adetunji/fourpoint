@@ -10,8 +10,8 @@ export default async function VarianceReportPage({ searchParams }: { searchParam
   const params = await searchParams;
   const session = await getServerSession(authOptions);
   
-  const isHOD = session?.user?.role === "HOD" || session?.user?.role === "SUPERVISOR";
-  const departmentId = session?.user?.departmentId;
+  const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(session?.user?.role ?? "");
+  const departmentId = (session?.user as any)?.departmentId as number | null;
 
   const startDateStr = params?.startDate as string | undefined;
   const endDateStr = params?.endDate as string | undefined;
@@ -23,7 +23,7 @@ export default async function VarianceReportPage({ searchParams }: { searchParam
   const results = await prisma.attendanceResult.findMany({
     where: {
       workDate: { gte: startDate, lte: endDate },
-      ...(isHOD && departmentId && { employee: { departmentId } }),
+      ...(isDeptScoped && departmentId && { employee: { departmentId } }),
     },
     include: { 
       employee: { include: { department: true } },

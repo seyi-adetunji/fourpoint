@@ -42,7 +42,6 @@ const adminNav: NavItemConfig[] = [
     ],
   },
   { name: "Leave", href: "/leave", icon: "CalendarOff" },
-  { name: "User Accounts", href: "/settings/users", icon: "UserCircle" },
   { 
     name: "Reports", href: "/reports", icon: "BarChart3",
     children: [
@@ -70,8 +69,9 @@ function getNavForRole(role: string): NavItemConfig[] {
       return adminNav;
     case "HOD":
     case "DEPT_ADMIN":
+      // Department managers: no global config pages and no user account management
       return adminNav.filter(item => 
-        !["Departments", "Shift Templates"].includes(item.name)
+        !["Departments", "Shift Templates", "User Accounts"].includes(item.name)
       );
     case "SUPERVISOR":
       return adminNav.filter(item => 
@@ -157,6 +157,7 @@ export function SidebarClient() {
   const role = (session.user as any).role || "EMPLOYEE";
   const navItems = getNavForRole(role);
   const showSettings = ["SUPER_ADMIN", "HR_ADMIN"].includes(role);
+  const showUserAccounts = ["SUPER_ADMIN", "HR_ADMIN"].includes(role);
 
   const sidebarContent = (
     <div className="flex flex-col w-64 h-full bg-sidebar border-r border-sidebar-border">
@@ -198,6 +199,19 @@ export function SidebarClient() {
 
       {/* ─── Footer ─── */}
       <div className="p-3 border-t border-sidebar-border space-y-1">
+        {showUserAccounts && (
+          <Link
+            href="/settings/users"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+              ${pathname === "/settings/users" 
+                ? "bg-sidebar-active text-sidebar-active-text" 
+                : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-white"
+              }`}
+          >
+            <UserCircle className="w-[18px] h-[18px] text-gray-500" />
+            User Accounts
+          </Link>
+        )}
         {showSettings && (
           <Link
             href="/settings"

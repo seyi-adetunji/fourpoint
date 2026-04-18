@@ -4,9 +4,16 @@ import { getUTCMidnight } from "@/lib/dateUtils";
 export const dynamic = "force-dynamic";
 import { Search } from "lucide-react";
 import { ExportButtons } from "@/components/ExportButtons";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export default async function AttendancePunchesPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
+  const session = await getServerSession(authOptions);
+  const userRole = (session?.user as any)?.role ?? "EMPLOYEE";
+  const userDeptId = (session?.user as any)?.departmentId as number | null;
+  const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(userRole);
+
   const dateStr = params?.date as string | undefined;
   const query = params?.q as string | undefined;
 
@@ -14,13 +21,18 @@ export default async function AttendancePunchesPage({ searchParams }: { searchPa
   const nextDay = new Date(targetDate);
   nextDay.setDate(nextDay.getDate() + 1);
 
+  const employeeFilter: any = { isNot: null };
+  if (isDeptScoped && userDeptId) {
+    employeeFilter.departmentId = userDeptId;
+  }
+  if (query && !isDeptScoped) {
+    employeeFilter.fullName = { contains: query, mode: "insensitive" };
+  }
+
   const punches = await prisma.iclockTransaction.findMany({
     where: {
       punchTime: { gte: targetDate, lt: nextDay },
-      employee: { isNot: null }, 
-      ...(query && {
-        employee: { fullName: { contains: query, mode: "insensitive" as any } },
-      }),
+      employee: employeeFilter,
     },
     include: { employee: { include: { department: true } }, terminal: true },
     orderBy: { punchTime: "desc" },

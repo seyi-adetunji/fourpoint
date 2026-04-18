@@ -3,13 +3,25 @@ export const dynamic = "force-dynamic";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Download, Search } from "lucide-react";
+import { Download } from "lucide-react";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export default async function AttendanceResultsPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
+  const session = await getServerSession(authOptions);
+  const userRole = (session?.user as any)?.role ?? "EMPLOYEE";
+  const userDeptId = (session?.user as any)?.departmentId as number | null;
+
+  // Dept-scoped roles can only see their own department
+  const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(userRole);
+  
   const dateStr = params?.date as string | undefined;
-  const deptId = params?.department as string | undefined;
   const statusFilter = params?.status as string | undefined;
+  // For dept-scoped roles, ignore the URL param and enforce their dept
+  const deptId = isDeptScoped
+    ? (userDeptId ? String(userDeptId) : undefined)
+    : (params?.department as string | undefined);
 
   const targetDate = getUTCMidnight(dateStr);
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
@@ -41,10 +53,16 @@ export default async function AttendanceResultsPage({ searchParams }: { searchPa
         <div className="table-toolbar">
           <form className="flex items-center gap-3 flex-wrap">
             <input type="date" name="date" defaultValue={format(targetDate, "yyyy-MM-dd")} className="input max-w-[180px]" />
-            <select name="department" defaultValue={deptId || ""} className="input max-w-[180px]">
-              <option value="">All Departments</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
+            {isDeptScoped ? (
+              <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-2 rounded-xl">
+                📍 {departments.find(d => d.id === userDeptId)?.name ?? "Your Department"}
+              </span>
+            ) : (
+              <select name="department" defaultValue={deptId || ""} className="input max-w-[180px]">
+                <option value="">All Departments</option>
+                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            )}
             <select name="status" defaultValue={statusFilter || ""} className="input max-w-[180px]">
               <option value="">All Statuses</option>
               {statuses.map(s => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}

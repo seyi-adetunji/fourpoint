@@ -3,11 +3,24 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export default async function EmployeesPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const resolvedSearchParams = await searchParams;
+  const session = await getServerSession(authOptions);
+  const userRole = (session?.user as any)?.role ?? "EMPLOYEE";
+  const userDeptId = (session?.user as any)?.departmentId as number | null;
+
+  // Dept-scoped roles can only see their own department
+  const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(userRole);
+
   const query = resolvedSearchParams?.q as string | undefined;
-  const deptFilter = resolvedSearchParams?.department as string | undefined;
+  
+  // For dept-scoped roles, ignore the URL param and enforce their dept
+  const deptFilter = isDeptScoped
+    ? (userDeptId ? String(userDeptId) : undefined)
+    : (resolvedSearchParams?.department as string | undefined);
 
   // Default to showing all employees if the database marks them as inactive by default
   const whereClause: any = {};
@@ -35,12 +48,18 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
       <div className="page-header">
         <div>
           <h1 className="page-title">Employees</h1>
-          <p className="page-subtitle">Manage hotel staff and department assignments</p>
+          <p className="page-subtitle">
+            {isDeptScoped
+              ? `Staff in ${departments.find(d => d.id === userDeptId)?.name ?? 'your department'}`
+              : 'View and manage hotel staff'}
+          </p>
         </div>
-        <Link href="/employees/new" className="btn-primary">
-          <Plus className="w-4 h-4" />
-          Add Employee
-        </Link>
+        {!isDeptScoped && (
+          <Link href="/employees/new" className="btn-primary">
+            <Plus className="w-4 h-4" />
+            Add Employee
+          </Link>
+        )}
       </div>
 
       <div className="table-wrapper">
@@ -56,13 +75,19 @@ export default async function EmployeesPage({ searchParams }: { searchParams: Pr
                 className="input input-with-icon w-full"
               />
             </div>
-            <select name="department" defaultValue={deptFilter || ""} className="input w-full sm:max-w-[200px]">
-              <option value="">All Departments</option>
-              {departments.map(d => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-            <button type="submit" className="btn-secondary btn-sm w-full sm:w-auto">Filter</button>
+            {isDeptScoped ? (
+              <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-2 rounded-xl">
+                📍 {departments.find(d => d.id === userDeptId)?.name ?? 'Your Department'}
+              </span>
+            ) : (
+              <select name="department" defaultValue={deptFilter || ""} className="input w-full sm:max-w-[200px]">
+                <option value="">All Departments</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            )}
+            <button type="submit" className="btn-secondary btn-sm w-full sm:w-auto">Search</button>
           </form>
           <span className="text-xs text-muted-foreground font-medium hidden sm:block">{employees.length} employees</span>
         </div>

@@ -12,14 +12,14 @@ export default async function AttendanceExceptionsPage({ searchParams }: { searc
   const typeFilter = params?.type as string | undefined;
 
   const session = await getServerSession(authOptions);
-  const isHOD = session?.user?.role === "HOD" || session?.user?.role === "SUPERVISOR";
-  const departmentId = session?.user?.departmentId;
+  const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(session?.user?.role ?? "");
+  const departmentId = (session?.user as any)?.departmentId as number | null;
 
   const exceptions = await prisma.attendanceException.findMany({
     where: {
       ...(statusFilter && { status: statusFilter }),
       ...(typeFilter && { type: typeFilter }),
-      ...(isHOD && departmentId && { employee: { departmentId } }),
+      ...(isDeptScoped && departmentId && { employee: { departmentId } }),
     },
     include: { employee: { include: { department: true } } },
     orderBy: { createdAt: "desc" },
