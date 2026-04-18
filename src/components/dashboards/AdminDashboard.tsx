@@ -97,6 +97,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
     { title: "Live Punches Today", value: livePunchesToday, icon: Timer, color: "text-indigo-600", bgColor: "bg-indigo-50", href: "/attendance/punches" },
     { title: "Connected Clocks", value: terminalCount, icon: Clock, color: "text-emerald-700", bgColor: "bg-emerald-50", href: "#" },
     { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: "/reports/daily" },
+    { title: "Pending Shifts", value: pendingShiftCount, icon: CalendarOff, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts?status=PENDING_APPROVAL" },
     { title: "Absent / No Show", value: absentCount, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
     { title: "Late Today", value: lateCount, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
     { title: "Exceptions", value: unresolvedExceptions, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },

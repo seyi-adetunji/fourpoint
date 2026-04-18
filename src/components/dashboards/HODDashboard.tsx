@@ -36,6 +36,7 @@ export async function HODDashboard({ session }: { session: Session }) {
     lateStaff,
     doubleShifts,
     exceptions,
+    pendingShiftsCount,
   ] = await Promise.all([
     prisma.employee.count({ where: { departmentId } }),
     prisma.shiftAssignment.count({
@@ -59,6 +60,9 @@ export async function HODDashboard({ session }: { session: Session }) {
       include: { employee: true },
       orderBy: { createdAt: "desc" }
     }),
+    prisma.shiftAssignment.count({
+      where: { status: "PENDING_APPROVAL", employee: { departmentId } }
+    }),
   ]);
 
   const cards = [
@@ -66,7 +70,7 @@ export async function HODDashboard({ session }: { session: Session }) {
     { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
     { title: "Absent Staff", value: absentStaff, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
     { title: "Late Staff", value: lateStaff, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
-    { title: "Double Shifts", value: doubleShifts, icon: Layers, color: "text-purple-600", bgColor: "bg-purple-50", href: "/reports/double-shift" },
+    { title: "Pending Shifts", value: pendingShiftsCount, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts?status=PENDING_APPROVAL" },
     { title: "Open Exceptions", value: exceptions.length, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },
   ];
 
