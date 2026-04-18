@@ -21,12 +21,13 @@ export default async function AttendancePunchesPage({ searchParams }: { searchPa
   const nextDay = new Date(targetDate);
   nextDay.setDate(nextDay.getDate() + 1);
 
+  // iclockTransaction.employee is a nullable relation.
+  // Prisma requires `is: {}` syntax for filtering on nullable relation properties.
   const employeeFilter: any = { isNot: null };
   if (isDeptScoped && userDeptId) {
-    employeeFilter.departmentId = userDeptId;
-  }
-  if (query && !isDeptScoped) {
-    employeeFilter.fullName = { contains: query, mode: "insensitive" };
+    employeeFilter.is = { departmentId: userDeptId };
+  } else if (query) {
+    employeeFilter.is = { fullName: { contains: query, mode: "insensitive" } };
   }
 
   const punches = await prisma.iclockTransaction.findMany({
