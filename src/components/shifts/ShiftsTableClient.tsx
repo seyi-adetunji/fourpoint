@@ -321,7 +321,7 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
                             ))}
                           </div>
                         ) : (
-                          <GroupEditShiftModal assignments={group as any} readOnly={isHOD} />
+                          <GroupEditShiftModal assignments={group as any} readOnly={false} />
                         )}
                       </td>
                     )}

@@ -45,6 +45,21 @@ export default function UserManagement() {
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
+  const handleDelete = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to delete user');
+      }
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -135,7 +150,10 @@ export default function UserManagement() {
                         <button className="p-1.5 text-gray-400 hover:text-primary transition-colors">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                        <button 
+                          onClick={() => handleDelete(user.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
