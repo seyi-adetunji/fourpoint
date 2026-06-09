@@ -21,8 +21,11 @@ export default function UserManagement() {
   const [users, setUsers] = useState<UserWithData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserWithData | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { data: session } = useSession() as any;
+  const currentRole = session?.user?.role;
 
   useEffect(() => {
     fetchUsers();
@@ -73,13 +76,15 @@ export default function UserManagement() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="btn-primary w-full sm:w-auto"
-        >
-          <Plus className="w-4 h-4" />
-          Create New User
-        </button>
+        {(currentRole === 'SUPER_ADMIN' || currentRole === 'HR_ADMIN') && (
+          <button 
+            onClick={() => { setEditingUser(null); setShowModal(true); }}
+            className="btn-primary w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4" />
+            Create New User
+          </button>
+        )}
       </div>
 
       <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -147,15 +152,24 @@ export default function UserManagement() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
-                        <button className="p-1.5 text-gray-400 hover:text-primary transition-colors">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(user.id)}
-                          className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {currentRole === 'SUPER_ADMIN' || currentRole === 'HR_ADMIN' ? (
+                          <>
+                            <button 
+                              onClick={() => { setEditingUser(user); setShowModal(true); }}
+                              className="p-1.5 text-gray-400 hover:text-primary transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(user.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">View Only</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -166,11 +180,16 @@ export default function UserManagement() {
         </div>
       </div>
 
-      {showAddModal && (
-        <CreateUserModal 
-          onClose={() => setShowAddModal(false)} 
+      {showModal && (
+        <UserModal 
+          userToEdit={editingUser}
+          onClose={() => {
+            setShowModal(false);
+            setEditingUser(null);
+          }} 
           onSuccess={() => {
-            setShowAddModal(false);
+            setShowModal(false);
+            setEditingUser(null);
             fetchUsers();
           }} 
         />
@@ -179,14 +198,14 @@ export default function UserManagement() {
   );
 }
 
-function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) {
+function UserModal({ userToEdit, onClose, onSuccess }: { userToEdit: UserWithData | null, onClose: () => void, onSuccess: () => void }) {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    name: userToEdit?.name || '',
+    email: userToEdit?.email || '',
     password: '',
-    role: 'EMPLOYEE' as Role,
-    employeeId: '',
-    departmentId: '',
+    role: userToEdit?.role || 'EMPLOYEE' as Role,
+    employeeId: userToEdit?.employeeId?.toString() || '',
+    departmentId: userToEdit?.departmentId?.toString() || '',
   });
   const [allEmployees, setAllEmployees] = useState<{id: number, fullName: string, empCode: string, departmentId?: number | null}[]>([]);
   const [departments, setDepartments] = useState<{id: number, name: string}[]>([]);
@@ -245,7 +264,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.password.length < 6) {
+    if (!userToEdit && formData.password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
     }
@@ -253,15 +272,18 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
     setError('');
 
     try {
-      const res = await fetch('/api/admin/users', {
-        method: 'POST',
+      const url = userToEdit ? `/api/admin/users/${userToEdit.id}` : '/api/admin/users';
+      const method = userToEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to create user');
+        throw new Error(data.message || data.error || `Failed to ${userToEdit ? 'update' : 'create'} user`);
       }
 
       onSuccess();
@@ -280,8 +302,8 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div className="p-6 border-b border-border bg-gray-50/50">
-          <h3 className="text-xl font-bold text-gray-900">Create New User</h3>
-          <p className="text-sm text-gray-500 mt-1">Assign roles and link to employee profiles</p>
+          <h3 className="text-xl font-bold text-gray-900">{userToEdit ? 'Edit User' : 'Create New User'}</h3>
+          <p className="text-sm text-gray-500 mt-1">{userToEdit ? 'Update user details and access' : 'Assign roles and link to employee profiles'}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
@@ -317,12 +339,15 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
             </div>
 
             <div className="col-span-2 space-y-1">
-              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Password *</label>
+              <label className="text-xs font-semibold uppercase text-gray-500 tracking-wider">
+                Password {userToEdit && <span className="normal-case font-normal">(Leave blank to keep current)</span>}
+                {!userToEdit && '*'}
+              </label>
               <input
-                required
+                required={!userToEdit}
                 type="password"
                 className="input w-full"
-                placeholder="Min 6 characters"
+                placeholder={userToEdit ? "Leave blank to unchanged" : "Min 6 characters"}
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
@@ -402,7 +427,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void, onSucces
               disabled={submitting || loading}
               className="btn-primary"
             >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create User'}
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : userToEdit ? 'Save Changes' : 'Create User'}
             </button>
           </div>
         </form>

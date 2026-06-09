@@ -1,36 +1,35 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckSquare, Square, Check, X, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { CheckSquare, Square, Check, X, Loader2, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import GroupEditShiftModal from "@/components/GroupEditShiftModal";
 
-interface AssignmentWithRelations {
+export type GroupedShift = {
   id: string;
   employeeId: number;
   workDate: string;
-  status: string;
-  sequence: number;
-  employee: {
-    fullName: string;
-    empCode: string;
-    department: { name: string } | null;
-  };
-  shiftTemplate: {
-    name: string;
-    startTime: string;
-    endTime: string;
-    color: string;
-  };
-}
+  employee: { fullName: string; empCode: string; department: { name: string } | null };
+  assignments: {
+    id: string;
+    status: string;
+    sequence: number;
+    shiftTemplateId: string;
+    shiftTemplate: { id: string; name: string; startTime: string; endTime: string; color: string };
+  }[];
+};
 
 interface ShiftsTableClientProps {
-  initialGroups: AssignmentWithRelations[][];
+  groups: GroupedShift[];
   isAdmin: boolean;
   isHOD: boolean;
   statusFilter?: string;
+  pagination: {
+    page: number;
+    totalPages: number;
+  };
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -94,26 +93,25 @@ function SingleShiftActions({ assignmentId }: { assignmentId: string }) {
   );
 }
 
-export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter }: ShiftsTableClientProps) {
+export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagination }: ShiftsTableClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
-  const [groups, setGroups] = useState(initialGroups);
 
-  const showPendingActions = statusFilter === "PENDING_APPROVAL" && isAdmin;
-  
-  const pendingAssignments = groups
-    .filter(g => g.some(a => a.status === "PENDING_APPROVAL"))
-    .flatMap(g => g.filter(a => a.status === "PENDING_APPROVAL").map(a => a.id));
+  const canManage = isAdmin || isHOD;
+  const allAssignmentIds = groups.flatMap(g => g.assignments.map(a => a.id));
 
-  const allSelected = pendingAssignments.length > 0 && pendingAssignments.every(id => selectedIds.has(id));
-  const someSelected = pendingAssignments.some(id => selectedIds.has(id)) && !allSelected;
+  const allSelected = allAssignmentIds.length > 0 && allAssignmentIds.every(id => selectedIds.has(id));
+  const someSelected = allAssignmentIds.some(id => selectedIds.has(id)) && !allSelected;
 
   const handleSelectAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(pendingAssignments));
+      setSelectedIds(new Set(allAssignmentIds));
     }
   };
 
@@ -127,35 +125,53 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
     setSelectedIds(newSelected);
   };
 
-  const handleBulkAction = async (action: "approve" | "reject") => {
+  const handleBulkAction = async (action: "approve" | "reject" | "delete") => {
     if (selectedIds.size === 0) return;
+    
+    if (action === "delete" && !confirm(`Are you sure you want to delete ${selectedIds.size} shift(s)?`)) {
+      return;
+    }
     
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/shifts/bulk-approve`, {
+        const url = action === "delete" ? `/api/shifts/bulk-delete` : `/api/shifts/bulk-approve`;
+        const body = action === "delete" 
+          ? { assignmentIds: Array.from(selectedIds) }
+          : { action, assignmentIds: Array.from(selectedIds) };
+          
+        const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, assignmentIds: Array.from(selectedIds) }),
+          body: JSON.stringify(body),
         });
 
-        if (!res.ok) throw new Error("Failed to process request");
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || "Failed to process request");
+        }
 
-        toast.success(`${selectedIds.size} shift(s) ${action === "approve" ? "approved" : "rejected"} successfully`);
+        toast.success(`${selectedIds.size} shift(s) ${action === "delete" ? "deleted" : action + "d"} successfully`);
         setSelectedIds(new Set());
         router.refresh();
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
-        toast.error("An error occurred");
+        toast.error(err.message || "An error occurred");
       }
     });
   };
 
+  const goToPage = (pageNumber: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("page", pageNumber.toString());
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
   return (
     <>
-      {showPendingActions && selectedIds.size > 0 && (
-        <div className="mb-4 flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+      {canManage && selectedIds.size > 0 && (
+        <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-amber-800">
+            <span className="text-sm font-medium text-blue-800">
               {selectedIds.size} shift(s) selected
             </span>
           </div>
@@ -166,15 +182,23 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
             >
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Approve Selected
+              Approve
             </button>
             <button
               onClick={() => handleBulkAction("reject")}
               disabled={isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
             >
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-              Reject Selected
+              Reject
+            </button>
+            <button
+              onClick={() => handleBulkAction("delete")}
+              disabled={isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+            >
+              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Delete
             </button>
           </div>
         </div>
@@ -184,12 +208,12 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-muted-foreground uppercase border-b border-border bg-gray-50/30">
             <tr>
-              {showPendingActions && (
+              {canManage && (
                 <th className="px-5 py-3.5 font-semibold w-10">
                   <button
                     onClick={handleSelectAll}
                     className="p-1 hover:bg-gray-100 rounded"
-                    disabled={pendingAssignments.length === 0}
+                    disabled={allAssignmentIds.length === 0}
                   >
                     {allSelected ? (
                       <CheckSquare className="w-4 h-4 text-primary" />
@@ -211,7 +235,7 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
               <th className="px-5 py-3.5 font-semibold">Department</th>
               <th className="px-5 py-3.5 font-semibold">Shifts</th>
               <th className="px-5 py-3.5 font-semibold">Status</th>
-              {(isAdmin || isHOD) && (
+              {canManage && (
                 <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
               )}
             </tr>
@@ -219,66 +243,63 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
           <tbody className="divide-y divide-border">
             {groups.length === 0 ? (
               <tr>
-                <td colSpan={showPendingActions ? 7 : 6} className="px-5 py-12 text-center text-muted-foreground">
-                  No shift assignments found. Click <strong>Assign Shift</strong> to get started.
+                <td colSpan={canManage ? 7 : 6} className="px-5 py-12 text-center text-muted-foreground">
+                  No shift assignments found.
                 </td>
               </tr>
             ) : (
               groups.map((group) => {
-                const first = group[0];
-                const label = shiftCountLabel(group.length);
-                const groupPendingIds = group.filter(a => a.status === "PENDING_APPROVAL").map(a => a.id);
-                const allInGroupSelected = groupPendingIds.length > 0 && groupPendingIds.every(id => selectedIds.has(id));
-                const someInGroupSelected = groupPendingIds.some(id => selectedIds.has(id)) && !allInGroupSelected;
+                const label = shiftCountLabel(group.assignments.length);
+                const groupIds = group.assignments.map(a => a.id);
+                const allInGroupSelected = groupIds.length > 0 && groupIds.every(id => selectedIds.has(id));
+                const someInGroupSelected = groupIds.some(id => selectedIds.has(id)) && !allInGroupSelected;
                 
                 return (
                   <tr
-                    key={`${first.employeeId}|${first.workDate}`}
+                    key={group.id}
                     className="hover:bg-gray-50/50 transition-colors"
                   >
-                    {showPendingActions && (
+                    {canManage && (
                       <td className="px-5 py-3.5">
-                        {groupPendingIds.length > 0 && (
-                          <button
-                            onClick={() => groupPendingIds.forEach(id => handleSelect(id))}
-                            className="p-1 hover:bg-gray-100 rounded"
-                          >
-                            {allInGroupSelected ? (
-                              <CheckSquare className="w-4 h-4 text-primary" />
-                            ) : someInGroupSelected ? (
-                              <div className="relative">
-                                <Square className="w-4 h-4 text-primary" />
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <div className="w-2 h-2 bg-primary rounded-sm" />
-                                </div>
+                        <button
+                          onClick={() => groupIds.forEach(id => handleSelect(id))}
+                          className="p-1 hover:bg-gray-100 rounded"
+                        >
+                          {allInGroupSelected ? (
+                            <CheckSquare className="w-4 h-4 text-primary" />
+                          ) : someInGroupSelected ? (
+                            <div className="relative">
+                              <Square className="w-4 h-4 text-primary" />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-2 h-2 bg-primary rounded-sm" />
                               </div>
-                            ) : (
-                              <Square className="w-4 h-4 text-gray-400" />
-                            )}
-                          </button>
-                        )}
+                            </div>
+                          ) : (
+                            <Square className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
                       </td>
                     )}
                     <td className="px-5 py-3.5 font-medium text-gray-900 whitespace-nowrap">
-                      {format(new Date(first.workDate), "MMM dd, yyyy")}
+                      {format(new Date(group.workDate), "MMM dd, yyyy")}
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="font-medium text-gray-900">{first.employee.fullName}</div>
-                      <span className="text-xs text-muted-foreground font-mono">{first.employee.empCode}</span>
+                      <div className="font-medium text-gray-900">{group.employee.fullName}</div>
+                      <span className="text-xs text-muted-foreground font-mono">{group.employee.empCode}</span>
                     </td>
                     <td className="px-5 py-3.5 text-gray-600">
-                      {first.employee.department?.name || "—"}
+                      {group.employee.department?.name || "—"}
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex flex-col gap-1">
-                        {group.length > 1 && (
+                        {group.assignments.length > 1 && (
                           <span className="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200 mb-0.5">
                             <span>⚡</span> {label}
                           </span>
                         )}
-                        {group.map((a) => (
+                        {group.assignments.map((a) => (
                           <div key={a.id} className="flex items-center gap-1.5">
-                            {group.length > 1 && (
+                            {group.assignments.length > 1 && (
                               <span className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold bg-gray-200 text-gray-500">
                                 {a.sequence}
                               </span>
@@ -302,7 +323,7 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex flex-col gap-0.5">
-                        {group.map((a) => (
+                        {group.assignments.map((a) => (
                           <span
                             key={a.id}
                             className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border w-fit ${STATUS_STYLES[a.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
@@ -312,16 +333,24 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
                         ))}
                       </div>
                     </td>
-                    {(isAdmin || isHOD) && (
+                    {canManage && (
                       <td className="px-5 py-3.5 text-right">
-                        {showPendingActions ? (
+                        {statusFilter === "PENDING_APPROVAL" ? (
                           <div className="flex items-center justify-end gap-1">
-                            {group.map((a) => (
+                            {group.assignments.map((a) => (
                               <SingleShiftActions key={a.id} assignmentId={a.id} />
                             ))}
                           </div>
                         ) : (
-                          <GroupEditShiftModal assignments={group as any} readOnly={false} />
+                          <GroupEditShiftModal 
+                            assignments={group.assignments.map(a => ({
+                              ...a,
+                              workDate: group.workDate,
+                              employeeId: group.employeeId,
+                              employee: group.employee
+                            })) as any} 
+                            readOnly={false} 
+                          />
                         )}
                       </td>
                     )}
@@ -332,6 +361,33 @@ export function ShiftsTableClient({ initialGroups, isAdmin, isHOD, statusFilter 
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {pagination.totalPages > 1 && (
+        <div className="px-5 py-3 border-t border-border flex items-center justify-between bg-gray-50/50">
+          <span className="text-sm text-muted-foreground">
+            Page {pagination.page} of {pagination.totalPages}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => goToPage(pagination.page - 1)}
+              disabled={pagination.page <= 1}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Previous
+            </button>
+            <button
+              onClick={() => goToPage(pagination.page + 1)}
+              disabled={pagination.page >= pagination.totalPages}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

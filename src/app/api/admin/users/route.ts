@@ -7,12 +7,28 @@ import bcrypt from "bcryptjs";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "SUPER_ADMIN" && session.user.role !== "HR_ADMIN") {
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userRole = (session.user as any).role ?? "EMPLOYEE";
+  const userDeptId = (session.user as any).departmentId as number | null;
+  
+  const isAdmin = ["SUPER_ADMIN", "HR_ADMIN"].includes(userRole);
+  const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(userRole);
+
+  if (!isAdmin && !isDeptScoped) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const whereClause: any = {};
+  if (isDeptScoped && userDeptId) {
+    whereClause.departmentId = userDeptId;
   }
 
   try {
     const users = await prisma.user.findMany({
+      where: whereClause,
       include: {
         employee: {
           select: { fullName: true, empCode: true }

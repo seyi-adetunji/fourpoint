@@ -3,30 +3,10 @@ export const dynamic = "force-dynamic";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
 import AssignShiftModal from "@/components/AssignShiftModal";
-import GroupEditShiftModal from "@/components/GroupEditShiftModal";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ExportButtons } from "@/components/ExportButtons";
 import { ShiftsTableClient } from "@/components/shifts/ShiftsTableClient";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function shiftCountLabel(count: number) {
-  if (count === 1) return null;
-  if (count === 2) return "Double Shift";
-  if (count === 3) return "Triple Shift";
-  return `×${count} Shift`;
-}
-
-const STATUS_STYLES: Record<string, string> = {
-  SCHEDULED: "bg-blue-50 text-blue-700 border-blue-200",
-  CONFIRMED: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  CANCELLED: "bg-red-50 text-red-700 border-red-200",
-  PENDING_APPROVAL: "bg-amber-50 text-amber-700 border-amber-200",
-  SWAPPED: "bg-purple-50 text-purple-700 border-purple-200",
-};
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function ShiftsPage({
   searchParams,
@@ -41,8 +21,7 @@ export default async function ShiftsPage({
   const role = (session?.user as any)?.role ?? "EMPLOYEE";
   const userDeptId = (session?.user as any)?.departmentId as number | undefined;
 
-  // Management roles that scope to own department
-  const isHOD = role === "HOD" || role === "DEPT_ADMIN";
+  const isHOD = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(role);
   const isAdmin = ["SUPER_ADMIN", "HR_ADMIN"].includes(role);
 
   const selectedDate = resolvedSearchParams?.date
@@ -51,17 +30,14 @@ export default async function ShiftsPage({
   const endDateStr = resolvedSearchParams?.endDate as string | undefined;
   const endDate = endDateStr ? getUTCMidnight(endDateStr) : undefined;
   
-  const selectedEmployeeId = resolvedSearchParams?.employee
-    ? Number(resolvedSearchParams.employee)
-    : undefined;
-  const deptId = isHOD
-    ? userDeptId
-    : resolvedSearchParams?.department
-    ? Number(resolvedSearchParams.department)
-    : undefined;
+  const q = resolvedSearchParams?.q as string | undefined;
   const statusFilter = resolvedSearchParams?.status as string | undefined;
 
-  const [shiftAssignments, employees, departments] = await Promise.all([
+  // Pagination parameters
+  const page = resolvedSearchParams?.page ? parseInt(resolvedSearchParams.page as string) : 1;
+  const pageSize = 20;
+
+  const [shiftAssignments, employees] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where: {
         ...(endDate 
@@ -70,8 +46,15 @@ export default async function ShiftsPage({
           ? { workDate: selectedDate }
           : { workDate: { gte: selectedDate } }
         ),
-        ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
-        ...(deptId && { employee: { departmentId: deptId } }),
+        ...(isHOD && userDeptId ? { employee: { departmentId: userDeptId } } : {}),
+        ...(q && {
+          employee: {
+            OR: [
+              { fullName: { contains: q, mode: "insensitive" } },
+              { empCode: { contains: q, mode: "insensitive" } },
+            ]
+          }
+        }),
         ...(statusFilter && { status: statusFilter }),
       },
       include: {
@@ -83,7 +66,8 @@ export default async function ShiftsPage({
         { employee: { fullName: "asc" } },
         { sequence: "asc" },
       ],
-      take: 500,
+      // We limit to 5000 to prevent OOM on very large datasets
+      take: 5000,
     }),
     prisma.employee.findMany({
       where: {
@@ -92,7 +76,6 @@ export default async function ShiftsPage({
       orderBy: { fullName: "asc" },
       select: { id: true, empCode: true, fullName: true },
     }),
-    prisma.department.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const exportData = shiftAssignments.map(a => ({
@@ -117,35 +100,43 @@ export default async function ShiftsPage({
 
   // Group by (employeeId + workDate)
   type GroupKey = string;
-  const groups = new Map<GroupKey, typeof shiftAssignments>();
+  const groups = new Map<GroupKey, any>();
   for (const a of shiftAssignments) {
     const dateStr = a.workDate.toISOString().slice(0, 10);
     const key: GroupKey = `${a.employeeId}|${dateStr}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(a);
-  }
-  const groupList = Array.from(groups.values());
-
-  const serializableGroups = groupList.map(group =>
-    group.map(a => ({
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key, // unique group identifier
+        employeeId: a.employeeId,
+        workDate: a.workDate.toISOString(),
+        employee: {
+          fullName: a.employee.fullName,
+          empCode: a.employee.empCode,
+          department: a.employee.department ? { name: a.employee.department.name } : null,
+        },
+        assignments: []
+      });
+    }
+    groups.get(key)!.assignments.push({
       id: a.id,
-      employeeId: a.employeeId,
-      workDate: a.workDate.toISOString(),
       status: a.status,
       sequence: a.sequence,
-      employee: {
-        fullName: a.employee.fullName,
-        empCode: a.employee.empCode,
-        department: a.employee.department ? { name: a.employee.department.name } : null,
-      },
+      shiftTemplateId: a.shiftTemplateId,
       shiftTemplate: {
+        id: a.shiftTemplate.id,
         name: a.shiftTemplate.name,
         startTime: a.shiftTemplate.startTime,
         endTime: a.shiftTemplate.endTime,
         color: a.shiftTemplate.color,
       },
-    }))
-  );
+    });
+  }
+  const groupList = Array.from(groups.values());
+
+  // Memory Pagination
+  const totalItems = groupList.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedGroups = groupList.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div className="page-container animate-fade-in">
@@ -192,30 +183,17 @@ export default async function ShiftsPage({
                 className="input max-w-[140px]"
               />
             </div>
-            <select
-              name="employee"
-              defaultValue={selectedEmployeeId || ""}
-              className="input max-w-[200px]"
-            >
-              <option value="">All Employees</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.fullName} ({e.empCode})
-                </option>
-              ))}
-            </select>
-            {!isHOD && (
-              <select
-                name="department"
-                defaultValue={deptId || ""}
-                className="input max-w-[180px]"
-              >
-                <option value="">All Departments</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            )}
+            
+            <div className="relative">
+              <input
+                type="text"
+                name="q"
+                placeholder="Search name or ID..."
+                defaultValue={q || ""}
+                className="input max-w-[200px]"
+              />
+            </div>
+            
             <select name="status" defaultValue={statusFilter || ""} className="input max-w-[180px]">
               <option value="">All Statuses</option>
               <option value="SCHEDULED">Scheduled</option>
@@ -223,11 +201,11 @@ export default async function ShiftsPage({
               <option value="CONFIRMED">Confirmed</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
-            <button type="submit" className="btn-primary btn-sm">Filter</button>
+            <button type="submit" className="btn-primary btn-sm">Search</button>
           </form>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">
-              {groupList.length} employee-days 
+              {totalItems} employee-days 
               <span className="text-gray-400">({shiftAssignments.length} total shifts)</span>
             </span>
             <ExportButtons data={exportData} filename="rota_schedule" headers={exportHeaders} />
@@ -235,10 +213,11 @@ export default async function ShiftsPage({
         </div>
 
         <ShiftsTableClient
-          initialGroups={serializableGroups}
+          groups={paginatedGroups}
           isAdmin={isAdmin}
           isHOD={isHOD}
           statusFilter={statusFilter}
+          pagination={{ page, totalPages }}
         />
       </div>
     </div>

@@ -4,12 +4,27 @@
  */
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q") || undefined;
-    const department = searchParams.get("department") || undefined;
+    let departmentIdParam = searchParams.get("department") ? parseInt(searchParams.get("department") as string) : undefined;
+
+    const userRole = (session.user as any).role ?? "EMPLOYEE";
+    const userDeptId = (session.user as any).departmentId as number | null;
+    const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(userRole);
+
+    if (isDeptScoped && userDeptId) {
+      departmentIdParam = userDeptId;
+    }
 
     const whereClause: any = {};
     if (q) {
@@ -18,8 +33,8 @@ export async function GET(request: Request) {
         { empCode: { contains: q, mode: "insensitive" } },
       ];
     }
-    if (department) {
-      whereClause.departmentId = parseInt(department);
+    if (departmentIdParam) {
+      whereClause.departmentId = departmentIdParam;
     }
 
     const employees = await prisma.employee.findMany({
