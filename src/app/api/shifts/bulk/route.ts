@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { syncZKBioTimeInsert } from "@/lib/zkbiotime";
 
 /**
  * POST /api/shifts/bulk
@@ -103,6 +104,26 @@ export async function POST(req: Request) {
       data: records,
       skipDuplicates: true,
     });
+
+    // ── ZKBioTime Sync: insert into att_temporaryschedule for canteen meal tickets ──
+    if (result.count > 0) {
+      // Fetch shift template names for the IDs used
+      const templates = await prisma.shiftTemplate.findMany({
+        where: { id: { in: shiftTemplateIds } },
+        select: { id: true, name: true },
+      });
+      const templateMap = new Map(templates.map((t) => [t.id, t.name]));
+
+      const syncEntries = records
+        .map((r) => ({
+          employeeId: r.employeeId,
+          workDate: r.workDate,
+          shiftTemplateName: templateMap.get(r.shiftTemplateId) ?? "",
+        }))
+        .filter((e) => e.shiftTemplateName !== "");
+
+      await syncZKBioTimeInsert(syncEntries);
+    }
 
     return NextResponse.json(
       { created: result.count, total: records.length },

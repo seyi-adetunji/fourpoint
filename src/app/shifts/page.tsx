@@ -151,18 +151,10 @@ export default async function ShiftsPage({
         </div>
         <AssignShiftModal
           employees={employees}
-          requiresApproval={isHOD}
         />
       </div>
 
-      {isHOD && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-          <span className="text-lg">⏳</span>
-          <span>
-            As a <strong>Head of Department</strong>, your shift requests will be sent to HR for approval before being confirmed.
-          </span>
-        </div>
-      )}
+
 
       <div className="table-wrapper">
         <div className="table-toolbar">

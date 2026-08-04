@@ -38,8 +38,6 @@ interface ExistingAssignment {
 
 interface AssignShiftModalProps {
   employees: Employee[];
-  /** When true (HOD), assignments are created with PENDING_APPROVAL status */
-  requiresApproval?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -67,7 +65,7 @@ const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function AssignShiftModal({ employees, requiresApproval = false }: AssignShiftModalProps) {
+export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -279,7 +277,7 @@ export default function AssignShiftModal({ employees, requiresApproval = false }
             employeeIds: Array.from(selectedEmployeeIds),
             shiftTemplateIds: Array.from(selectedTemplateIds),
             dates: Array.from(selectedDates),
-            status: requiresApproval ? "PENDING_APPROVAL" : "SCHEDULED",
+            status: "SCHEDULED",
           }),
         });
 
