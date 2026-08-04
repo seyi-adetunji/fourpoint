@@ -166,6 +166,24 @@ export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagina
     router.push(`${pathname}?${params.toString()}`);
   };
 
+  const handleDeleteGroup = (groupIds: string[]) => {
+    if (!confirm("Are you sure you want to clear this shift assignment?")) return;
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/shifts/bulk-delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assignmentIds: groupIds }),
+        });
+        if (!res.ok) throw new Error("Failed to clear shift");
+        toast.success(`Shift cleared successfully`);
+        router.refresh();
+      } catch (err: any) {
+        toast.error(err.message || "An error occurred");
+      }
+    });
+  };
+
   return (
     <>
       {canManage && selectedIds.size > 0 && (
@@ -314,8 +332,8 @@ export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagina
                             >
                               {a.shiftTemplate.name}
                             </span>
-                            <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">
-                              {a.shiftTemplate.startTime}–{a.shiftTemplate.endTime}
+                            <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap font-bold bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                              {a.shiftTemplate.startTime < "12:00" ? "AM" : "PM"}
                             </span>
                           </div>
                         ))}
@@ -342,15 +360,25 @@ export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagina
                             ))}
                           </div>
                         ) : (
-                          <GroupEditShiftModal 
-                            assignments={group.assignments.map(a => ({
-                              ...a,
-                              workDate: group.workDate,
-                              employeeId: group.employeeId,
-                              employee: group.employee
-                            })) as any} 
-                            readOnly={false} 
-                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <GroupEditShiftModal 
+                              assignments={group.assignments.map(a => ({
+                                ...a,
+                                workDate: group.workDate,
+                                employeeId: group.employeeId,
+                                employee: group.employee
+                              })) as any} 
+                              readOnly={false} 
+                            />
+                            <button
+                              onClick={() => handleDeleteGroup(groupIds)}
+                              disabled={isPending}
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                              title="Clear Shift"
+                            >
+                              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          </div>
                         )}
                       </td>
                     )}

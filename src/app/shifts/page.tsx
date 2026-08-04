@@ -84,7 +84,7 @@ export default async function ShiftsPage({
     empCode: a.employee.empCode,
     department: a.employee.department?.name || "—",
     shift: a.shiftTemplate.name,
-    time: `${a.shiftTemplate.startTime}–${a.shiftTemplate.endTime}`,
+    time: a.shiftTemplate.startTime < "12:00" ? "AM" : "PM",
     status: a.status
   }));
 

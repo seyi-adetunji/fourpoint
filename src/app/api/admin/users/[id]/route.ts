@@ -28,9 +28,24 @@ export async function DELETE(
       return NextResponse.json({ message: "Cannot delete your own account" }, { status: 400 });
     }
 
-    await prisma.user.delete({
-      where: { id },
-    });
+    try {
+      await prisma.user.delete({
+        where: { id },
+      });
+    } catch (dbError: any) {
+      // P2003 is Prisma's error code for foreign key constraint failure
+      if (dbError.code === "P2003") {
+        await prisma.user.update({
+          where: { id },
+          data: { 
+            isActive: false,
+            passwordHash: "DEACTIVATED_USER", 
+          }
+        });
+        return NextResponse.json({ success: true, softDeleted: true });
+      }
+      throw dbError;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

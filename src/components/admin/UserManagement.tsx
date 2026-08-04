@@ -121,7 +121,14 @@ export default function UserManagement() {
                           {user.name[0]}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900">{user.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-900">{user.name}</p>
+                            {!user.isActive && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
+                                Deactivated
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500">{user.email}</p>
                         </div>
                       </div>
