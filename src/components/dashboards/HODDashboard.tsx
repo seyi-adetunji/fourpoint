@@ -36,7 +36,7 @@ export async function HODDashboard({ session }: { session: Session }) {
     lateStaff,
     doubleShifts,
     exceptions,
-    pendingShiftsCount,
+    recentShifts,
   ] = await Promise.all([
     prisma.employee.count({ where: { departmentId } }),
     prisma.shiftAssignment.count({
@@ -60,22 +60,25 @@ export async function HODDashboard({ session }: { session: Session }) {
       include: { employee: true },
       orderBy: { createdAt: "desc" }
     }),
-    prisma.shiftAssignment.count({
-      where: { status: "PENDING_APPROVAL", employee: { departmentId } }
+    prisma.shiftAssignment.findMany({
+      where: { employee: { departmentId } },
+      take: 5,
+      include: { employee: true, shiftTemplate: true },
+      orderBy: { createdAt: "desc" }
     }),
   ]);
 
   const cards = [
     { title: "Department Staff", value: totalStaff, icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
     { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
+    { title: "Today's Shifts", value: todayShifts, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts" },
     { title: "Absent Staff", value: absentStaff, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
     { title: "Late Staff", value: lateStaff, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
-    { title: "Pending Shifts", value: pendingShiftsCount, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts?status=PENDING_APPROVAL" },
     { title: "Open Exceptions", value: exceptions.length, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },
   ];
 
   return (
-    <div className="page-container animate-fade-in">
+    <div className="page-container animate-fade-in space-y-6">
       <div className="page-header">
         <div>
           <h1 className="page-title text-2xl">Department Dashboard</h1>
@@ -84,28 +87,6 @@ export async function HODDashboard({ session }: { session: Session }) {
           </p>
         </div>
       </div>
-
-      {pendingShiftsCount > 0 && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Calendar className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-blue-800">
-                {pendingShiftsCount} shift request{pendingShiftsCount > 1 ? "s" : ""} awaiting HR approval
-              </p>
-              <p className="text-xs text-blue-600">Your submitted shifts are pending HR review</p>
-            </div>
-          </div>
-          <Link 
-            href="/shifts?status=PENDING_APPROVAL" 
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            View Requests
-          </Link>
-        </div>
-      )}
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {
@@ -126,28 +107,70 @@ export async function HODDashboard({ session }: { session: Session }) {
         })}
       </div>
 
-      <Card title="Pending Exceptions" description="Items requiring your attention" noPadding>
-        {exceptions.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center mx-auto mb-3">
-              <AlertCircle className="w-6 h-6 text-emerald-500" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Shift Assignments */}
+        <Card title="Shift Assignments" description="Recent shift assignments for your department" noPadding>
+          {recentShifts.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
+                <Calendar className="w-6 h-6 text-blue-500" />
+              </div>
+              <p className="text-sm text-muted-foreground">No shift assignments found for your department</p>
             </div>
-            <p className="text-sm text-muted-foreground">All exceptions resolved for your department</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {exceptions.map((ex) => (
-              <Link key={ex.id} href="/attendance/exceptions" className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
-                <div>
-                  <p className="font-medium text-sm text-primary">{ex.employee.fullName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{format(ex.workDate, "MMM dd")} • {ex.type.replace(/_/g, " ")}</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {recentShifts.map((sh) => (
+                <div key={sh.id} className="p-4 hover:bg-gray-50/50 transition-colors group">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm text-primary">{sh.employee.fullName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {format(sh.workDate, "MMM dd, yyyy")} • {sh.shiftTemplate.name} ({sh.shiftTemplate.startTime}–{sh.shiftTemplate.endTime})
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                        sh.status === 'SCHEDULED' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        sh.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        'bg-gray-100 text-gray-700 border-gray-200'
+                      }`}>
+                        {sh.status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <StatusBadge status={ex.status} size="sm" />
+              ))}
+              <Link href="/shifts" className="block p-3 text-center text-xs font-semibold text-primary hover:bg-gray-50 border-t border-border">
+                Manage Department Shifts →
               </Link>
-            ))}
-          </div>
-        )}
-      </Card>
+            </div>
+          )}
+        </Card>
+
+        {/* Pending Exceptions */}
+        <Card title="Pending Exceptions" description="Items requiring your attention" noPadding>
+          {exceptions.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center mx-auto mb-3">
+                <AlertCircle className="w-6 h-6 text-emerald-500" />
+              </div>
+              <p className="text-sm text-muted-foreground">All exceptions resolved for your department</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {exceptions.map((ex) => (
+                <Link key={ex.id} href="/attendance/exceptions" className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
+                  <div>
+                    <p className="font-medium text-sm text-primary">{ex.employee.fullName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{format(ex.workDate, "MMM dd")} • {ex.type.replace(/_/g, " ")}</p>
+                  </div>
+                  <StatusBadge status={ex.status} size="sm" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

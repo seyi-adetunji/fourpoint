@@ -627,15 +627,29 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
             {/* ── Footer ── */}
             <div className="shrink-0 border-t border-gray-200 bg-white px-6 py-3 flex items-center justify-between">
               {/* Selection summary */}
-              <div className="text-xs text-gray-500 space-x-3">
+              <div className="text-xs text-gray-500 flex items-center gap-3">
                 {selectedEmployeeIds.size > 0 && (
-                  <span>{selectedEmployeeIds.size} employee{selectedEmployeeIds.size > 1 ? "s" : ""}</span>
+                  <span className="font-medium text-gray-700">{selectedEmployeeIds.size} employee{selectedEmployeeIds.size > 1 ? "s" : ""}</span>
                 )}
                 {selectedDates.size > 0 && (
-                  <span>{selectedDates.size} date{selectedDates.size > 1 ? "s" : ""}</span>
+                  <span className="font-medium text-gray-700">{selectedDates.size} date{selectedDates.size > 1 ? "s" : ""}</span>
                 )}
                 {selectedTemplateIds.size > 0 && (
-                  <span>{selectedTemplateIds.size} shift{selectedTemplateIds.size > 1 ? "s" : ""}</span>
+                  <span className="font-medium text-gray-700">{selectedTemplateIds.size} shift{selectedTemplateIds.size > 1 ? "s" : ""}</span>
+                )}
+                {(selectedEmployeeIds.size > 0 || selectedDates.size > 0 || selectedTemplateIds.size > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEmployeeIds(new Set());
+                      setSelectedTemplateIds(new Set());
+                      setSelectedDates(new Set());
+                      setError(null);
+                    }}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium hover:underline ml-1"
+                  >
+                    Clear Selection
+                  </button>
                 )}
               </div>
 

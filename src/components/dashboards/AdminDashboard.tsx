@@ -25,8 +25,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
     doubleShifts,
     pendingLeaves,
     overtimeResults,
-    pendingShiftCount,
-    pendingShifts,
+    recentShifts,
     terminalCount,
     livePunchesToday,
     terminals,
@@ -59,9 +58,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
       where: { workDate: today, overtimeMinutes: { gt: 0 } },
       select: { overtimeMinutes: true }
     }),
-    prisma.shiftAssignment.count({ where: { status: "PENDING_APPROVAL" } }),
     prisma.shiftAssignment.findMany({
-      where: { status: "PENDING_APPROVAL" },
       take: 5,
       include: { employee: true, shiftTemplate: true },
       orderBy: { createdAt: "desc" }
@@ -97,7 +94,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
     { title: "Live Punches Today", value: livePunchesToday, icon: Timer, color: "text-indigo-600", bgColor: "bg-indigo-50", href: "/attendance/punches" },
     { title: "Connected Clocks", value: terminalCount, icon: Clock, color: "text-emerald-700", bgColor: "bg-emerald-50", href: "#" },
     { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: "/reports/daily" },
-    { title: "Pending Shifts", value: pendingShiftCount, icon: CalendarOff, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts?status=PENDING_APPROVAL" },
+    { title: "Today's Shifts", value: todayShifts, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts" },
     { title: "Absent / No Show", value: absentCount, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
     { title: "Late Today", value: lateCount, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
     { title: "Exceptions", value: unresolvedExceptions, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },
@@ -116,28 +113,6 @@ export async function AdminDashboard({ session }: { session: Session }) {
           </span>
         </div>
       </div>
-
-      {pendingShiftCount > 0 && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-100 rounded-lg">
-              <CalendarOff className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-amber-800">
-                {pendingShiftCount} shift request{pendingShiftCount > 1 ? "s" : ""} awaiting approval
-              </p>
-              <p className="text-xs text-amber-600">Review and approve shift requests from HODs</p>
-            </div>
-          </div>
-          <Link 
-            href="/shifts?status=PENDING_APPROVAL" 
-            className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
-          >
-            Review Now
-          </Link>
-        </div>
-      )}
 
       {/* Primary KPI Section (Big Cards) */}
       <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
@@ -212,37 +187,41 @@ export async function AdminDashboard({ session }: { session: Session }) {
           )}
         </Card>
 
-        {/* Pending Shift Approvals */}
-        <Card title="Shift Approvals" description="Recent shift requests from HODs" noPadding>
-          {pendingShifts.length === 0 ? (
+        {/* Recent Shift Assignments */}
+        <Card title="Shift Assignments" description="Recently assigned shifts" noPadding>
+          {recentShifts.length === 0 ? (
             <div className="p-8 text-center">
               <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
-                <CheckCircle2 className="w-6 h-6 text-blue-500" />
+                <Calendar className="w-6 h-6 text-blue-500" />
               </div>
-              <p className="text-sm text-muted-foreground">No pending shift requests</p>
+              <p className="text-sm text-muted-foreground">No shift assignments found</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {pendingShifts.map((sh) => (
+              {recentShifts.map((sh) => (
                 <div key={sh.id} className="p-4 hover:bg-gray-50/50 transition-colors group">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-sm text-primary">{sh.employee.fullName}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {format(sh.workDate, "MMM dd")} • {sh.shiftTemplate.name}
+                        {format(sh.workDate, "MMM dd, yyyy")} • {sh.shiftTemplate.name} ({sh.shiftTemplate.startTime}–{sh.shiftTemplate.endTime})
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                       <PendingShiftActions assignmentId={sh.id} />
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                        sh.status === 'SCHEDULED' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        sh.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        'bg-gray-100 text-gray-700 border-gray-200'
+                      }`}>
+                        {sh.status.replace(/_/g, " ")}
+                      </span>
                     </div>
                   </div>
                 </div>
               ))}
-              {pendingShiftCount > 5 && (
-                <Link href="/shifts?status=PENDING_APPROVAL" className="block p-3 text-center text-xs font-semibold text-primary hover:bg-gray-50">
-                  View All {pendingShiftCount} Requests
-                </Link>
-              )}
+              <Link href="/shifts" className="block p-3 text-center text-xs font-semibold text-primary hover:bg-gray-50 border-t border-border">
+                View All Shift Assignments →
+              </Link>
             </div>
           )}
         </Card>

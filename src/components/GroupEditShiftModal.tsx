@@ -91,6 +91,37 @@ export default function GroupEditShiftModal({ assignments, readOnly = false }: G
 
   // ── Save ─────────────────────────────────────────────────────────────────────
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAll = () => {
+    if (!confirm("Are you sure you want to clear/delete this shift assignment?")) return;
+    setIsDeleting(true);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const assignmentIds = assignments.map((a) => a.id);
+        const res = await fetch("/api/shifts/bulk-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assignmentIds }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.message || "Failed to delete shift assignment.");
+          return;
+        }
+
+        setOpen(false);
+        router.refresh();
+      } catch {
+        setError("Something went wrong while deleting. Please try again.");
+      } finally {
+        setIsDeleting(false);
+      }
+    });
+  };
+
   const handleSave = () => {
     setError(null);
     startTransition(async () => {
@@ -320,26 +351,42 @@ export default function GroupEditShiftModal({ assignments, readOnly = false }: G
             )}
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={isPending}
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                {readOnly ? "Close" : "Cancel"}
-              </button>
-
-              {!readOnly && (
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3 bg-gray-50/50">
+              {!readOnly ? (
                 <button
-                  onClick={handleSave}
-                  disabled={isPending || !hasChanges}
-                  className="px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 flex items-center gap-2"
+                  type="button"
+                  onClick={handleDeleteAll}
+                  disabled={isPending || isDeleting}
+                  className="px-3.5 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {isPending ? "Saving…" : "Save Changes"}
+                  {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  Clear / Delete Shift
                 </button>
+              ) : (
+                <div />
               )}
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  disabled={isPending || isDeleting}
+                  className="px-4 py-2 text-sm text-gray-700 border border-gray-300 bg-white rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  {readOnly ? "Close" : "Cancel"}
+                </button>
+
+                {!readOnly && (
+                  <button
+                    onClick={handleSave}
+                    disabled={isPending || isDeleting || !hasChanges}
+                    className="px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {isPending ? "Saving…" : "Save Changes"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
