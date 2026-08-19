@@ -1,9 +1,11 @@
+export const dynamic = "force-dynamic";
+
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 /**
  * GET /api/shifts/month?year=2026&month=4
- * Returns all shift assignments for the given calendar month.
+ * Returns all active shift assignments for the given calendar month.
  */
 export async function GET(req: Request) {
   try {
@@ -22,6 +24,7 @@ export async function GET(req: Request) {
     const assignments = await prisma.shiftAssignment.findMany({
       where: {
         workDate: { gte: start, lte: end },
+        status: { not: "CANCELLED" },
       },
       include: {
         shiftTemplate: { select: { name: true, color: true } },
@@ -41,7 +44,11 @@ export async function GET(req: Request) {
       },
     }));
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      },
+    });
   } catch (err) {
     console.error("[GET /api/shifts/month]", err);
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });

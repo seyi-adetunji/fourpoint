@@ -9,6 +9,7 @@ import {
   Search,
   CalendarIcon,
   Loader2,
+  Trash2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,6 +31,7 @@ interface ShiftTemplate {
 }
 
 interface ExistingAssignment {
+  id: string;
   workDate: string; // ISO date string
   shiftTemplate: { name: string; color?: string };
   employeeId: number;
@@ -100,8 +102,8 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
     if (!open) return;
     setLoadingTemplates(true);
     Promise.all([
-      fetch("/api/shifts").then((r) => r.json()),
-      fetch(`/api/shifts/month?year=${calYear}&month=${calMonth + 1}`).then((r) =>
+      fetch("/api/shifts", { cache: "no-store" }).then((r) => r.json()),
+      fetch(`/api/shifts/month?year=${calYear}&month=${calMonth + 1}`, { cache: "no-store" }).then((r) =>
         r.ok ? r.json() : []
       ),
     ])
@@ -116,7 +118,7 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
   // ── Refetch assignments when month changes (modal already open)
   const refetchAssignments = useCallback(async () => {
     try {
-      const res = await fetch(`/api/shifts/month?year=${calYear}&month=${calMonth + 1}`);
+      const res = await fetch(`/api/shifts/month?year=${calYear}&month=${calMonth + 1}`, { cache: "no-store" });
       if (res.ok) setAssignments(await res.json());
     } catch {
       // silent
@@ -295,6 +297,61 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
         }, 1400);
       } catch {
         setError("Something went wrong. Please try again.");
+      }
+    });
+  };
+
+  // ── Clear / Delete existing shifts on selected dates
+  const handleDeleteSelectedShifts = () => {
+    setError(null);
+    if (selectedDates.size === 0) {
+      setError("Select at least one date on the calendar to clear shifts.");
+      return;
+    }
+
+    const datesArr = Array.from(selectedDates);
+    const toDeleteAssignments = assignments.filter((a) => {
+      const d = a.workDate.slice(0, 10);
+      const matchesDate = datesArr.includes(d);
+      const matchesEmp = selectedEmployeeIds.size > 0 ? selectedEmployeeIds.has(a.employeeId) : true;
+      return matchesDate && matchesEmp;
+    });
+
+    if (toDeleteAssignments.length === 0) {
+      setError("No existing shifts found on the selected date(s) to clear.");
+      return;
+    }
+
+    const count = toDeleteAssignments.length;
+    const targetDesc = selectedEmployeeIds.size > 0 ? `for the selected staff` : `across all staff`;
+    if (!confirm(`Are you sure you want to clear/delete ${count} shift assignment(s) ${targetDesc} on the selected date(s)?`)) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/shifts/bulk-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assignmentIds: toDeleteAssignments.map((a) => a.id),
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.message || "Failed to clear shifts.");
+          return;
+        }
+
+        setSuccessMsg(`✓ Cleared ${data.deleted ?? count} shift(s) from calendar.`);
+        await refetchAssignments();
+        setTimeout(() => {
+          setSuccessMsg(null);
+          router.refresh();
+        }, 1200);
+      } catch {
+        setError("Something went wrong while clearing shifts. Please try again.");
       }
     });
   };
@@ -506,15 +563,16 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
                               <div className="mt-0.5 space-y-[2px]">
                                 {visibleAssigns.map((a) => {
                                   const chipColor = a.shiftTemplate.color || "#6B7280";
+                                  const emp = employees.find((e) => e.id === a.employeeId);
                                   const label = a.shiftTemplate.name.length > 10
                                     ? a.shiftTemplate.name.slice(0, 10) + "…"
                                     : a.shiftTemplate.name;
                                   return (
                                     <div
-                                      key={`${a.employeeId}-${a.sequence}`}
+                                      key={`${a.id || a.employeeId}-${a.sequence}`}
                                       className="flex items-center gap-0.5 rounded overflow-hidden text-white"
                                       style={{ backgroundColor: chipColor }}
-                                      title={`Seq ${a.sequence}: ${a.shiftTemplate.name}`}
+                                      title={`${emp ? emp.fullName + ' · ' : ''}Seq ${a.sequence}: ${a.shiftTemplate.name}`}
                                     >
                                       {/* Sequence badge */}
                                       <span
@@ -657,6 +715,19 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
                 {/* Error / success inline */}
                 {error && <span className="text-xs text-red-600">{error}</span>}
                 {successMsg && <span className="text-xs text-green-600">{successMsg}</span>}
+
+                {selectedDates.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelectedShifts}
+                    disabled={isPending}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 rounded transition-colors disabled:opacity-50"
+                    title="Clear existing shift assignments on selected dates"
+                  >
+                    {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    Clear Shifts on Selected Dates
+                  </button>
+                )}
 
                 <button
                   onClick={handleClose}
