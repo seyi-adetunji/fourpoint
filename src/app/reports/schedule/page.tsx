@@ -55,13 +55,12 @@ export default async function ShiftScheduleReport({
   const totalAssignments = assignments.length;
   const doubleShiftDays = assignments.filter((a) => a.sequence > 1).length;
   const uniqueEmployees = new Set(assignments.map((a) => a.employeeId)).size;
-  const pendingApproval = assignments.filter((a) => a.status === "PENDING_APPROVAL").length;
+  const activeAssignments = assignments.filter((a) => a.status === "SCHEDULED" || a.status === "CONFIRMED").length;
 
   const STATUS_COLORS: Record<string, string> = {
     SCHEDULED: "bg-blue-50 text-blue-700 border-blue-200",
     CONFIRMED: "bg-emerald-50 text-emerald-700 border-emerald-200",
     CANCELLED: "bg-red-50 text-red-700 border-red-200",
-    PENDING_APPROVAL: "bg-amber-50 text-amber-700 border-amber-200",
     SWAPPED: "bg-purple-50 text-purple-700 border-purple-200",
   };
 
@@ -137,7 +136,7 @@ export default async function ShiftScheduleReport({
           { label: "Total Assignments", value: totalAssignments, color: "text-blue-600", bg: "bg-blue-50" },
           { label: "Employees Scheduled", value: uniqueEmployees, color: "text-emerald-600", bg: "bg-emerald-50" },
           { label: "Double-Shift Slots", value: doubleShiftDays, color: "text-violet-600", bg: "bg-violet-50" },
-          { label: "Pending Approval", value: pendingApproval, color: "text-amber-600", bg: "bg-amber-50" },
+          { label: "Active Scheduled", value: activeAssignments, color: "text-emerald-600", bg: "bg-emerald-50" },
         ].map((kpi) => (
           <div key={kpi.label} className="card p-4 flex items-center gap-3">
             <div className={`p-2 rounded-xl ${kpi.bg}`}>

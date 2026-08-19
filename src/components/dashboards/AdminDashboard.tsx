@@ -7,7 +7,6 @@ import { AttendanceChart } from "@/components/AttendanceChart";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
-import { PendingShiftActions } from "@/components/dashboards/PendingShiftActions";
 
 export async function AdminDashboard({ session }: { session: Session }) {
   const today = getUTCMidnight();

@@ -189,7 +189,6 @@ export default async function ShiftsPage({
             <select name="status" defaultValue={statusFilter || ""} className="input max-w-[180px]">
               <option value="">All Statuses</option>
               <option value="SCHEDULED">Scheduled</option>
-              <option value="PENDING_APPROVAL">Pending Approval</option>
               <option value="CONFIRMED">Confirmed</option>
               <option value="CANCELLED">Cancelled</option>
             </select>

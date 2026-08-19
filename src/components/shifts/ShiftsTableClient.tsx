@@ -47,52 +47,6 @@ function shiftCountLabel(count: number) {
   return `×${count} Shift`;
 }
 
-function SingleShiftActions({ assignmentId }: { assignmentId: string }) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  const handleAction = async (action: "approve" | "reject") => {
-    startTransition(async () => {
-      try {
-        const res = await fetch(`/api/shifts/${assignmentId}/approve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        });
-
-        if (!res.ok) throw new Error("Failed to process request");
-
-        toast.success(`Shift ${action === "approve" ? "approved" : "rejected"} successfully`);
-        router.refresh();
-      } catch (err) {
-        console.error(err);
-        toast.error("An error occurred");
-      }
-    });
-  };
-
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        onClick={() => handleAction("approve")}
-        disabled={isPending}
-        className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
-        title="Approve"
-      >
-        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-      </button>
-      <button
-        onClick={() => handleAction("reject")}
-        disabled={isPending}
-        className="p-1.5 rounded-md text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-        title="Reject"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-}
-
 export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagination }: ShiftsTableClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -125,32 +79,27 @@ export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagina
     setSelectedIds(newSelected);
   };
 
-  const handleBulkAction = async (action: "approve" | "reject" | "delete") => {
+  const handleBulkAction = async (action: "delete") => {
     if (selectedIds.size === 0) return;
     
-    if (action === "delete" && !confirm(`Are you sure you want to delete ${selectedIds.size} shift(s)?`)) {
+    if (!confirm(`Are you sure you want to delete ${selectedIds.size} shift(s)?`)) {
       return;
     }
     
     startTransition(async () => {
       try {
-        const url = action === "delete" ? `/api/shifts/bulk-delete` : `/api/shifts/bulk-approve`;
-        const body = action === "delete" 
-          ? { assignmentIds: Array.from(selectedIds) }
-          : { action, assignmentIds: Array.from(selectedIds) };
-          
-        const res = await fetch(url, {
+        const res = await fetch(`/api/shifts/bulk-delete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ assignmentIds: Array.from(selectedIds) }),
         });
 
         if (!res.ok) {
           const data = await res.json();
-          throw new Error(data.message || "Failed to process request");
+          throw new Error(data.message || "Failed to delete shifts");
         }
 
-        toast.success(`${selectedIds.size} shift(s) ${action === "delete" ? "deleted" : action + "d"} successfully`);
+        toast.success(`${selectedIds.size} shift(s) deleted successfully`);
         setSelectedIds(new Set());
         router.refresh();
       } catch (err: any) {
@@ -188,35 +137,25 @@ export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagina
     <>
       {canManage && selectedIds.size > 0 && (
         <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-blue-800">
               {selectedIds.size} shift(s) selected
             </span>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
+            >
+              Clear Selection
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => handleBulkAction("approve")}
-              disabled={isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Approve
-            </button>
-            <button
-              onClick={() => handleBulkAction("reject")}
-              disabled={isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
-            >
-              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-              Reject
-            </button>
-            <button
               onClick={() => handleBulkAction("delete")}
               disabled={isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
             >
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              Delete
+              Delete Selected Shifts
             </button>
           </div>
         </div>
@@ -353,33 +292,25 @@ export function ShiftsTableClient({ groups, isAdmin, isHOD, statusFilter, pagina
                     </td>
                     {canManage && (
                       <td className="px-5 py-3.5 text-right">
-                        {statusFilter === "PENDING_APPROVAL" ? (
-                          <div className="flex items-center justify-end gap-1">
-                            {group.assignments.map((a) => (
-                              <SingleShiftActions key={a.id} assignmentId={a.id} />
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            <GroupEditShiftModal 
-                              assignments={group.assignments.map(a => ({
-                                ...a,
-                                workDate: group.workDate,
-                                employeeId: group.employeeId,
-                                employee: group.employee
-                              })) as any} 
-                              readOnly={false} 
-                            />
-                            <button
-                              onClick={() => handleDeleteGroup(groupIds)}
-                              disabled={isPending}
-                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
-                              title="Clear Shift"
-                            >
-                              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          <GroupEditShiftModal 
+                            assignments={group.assignments.map(a => ({
+                              ...a,
+                              workDate: group.workDate,
+                              employeeId: group.employeeId,
+                              employee: group.employee
+                            })) as any} 
+                            readOnly={false} 
+                          />
+                          <button
+                            onClick={() => handleDeleteGroup(groupIds)}
+                            disabled={isPending}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                            title="Clear Shift"
+                          >
+                            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>
