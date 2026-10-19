@@ -12,6 +12,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/departments": { title: "Departments", subtitle: "Organizational department management" },
   "/shift-templates": { title: "Shift Templates", subtitle: "Configure shift definitions and schedules" },
   "/shifts": { title: "Shift Assignments", subtitle: "Manage rota scheduling and staff assignments" },
+  "/shift-list": { title: "Shift", subtitle: "All created shifts grouped by department with Excel & PDF export" },
   "/attendance": { title: "Attendance", subtitle: "View attendance records and processing" },
   "/attendance/punches": { title: "Attendance Punches", subtitle: "Raw biometric punch data" },
   "/attendance/results": { title: "Attendance Results", subtitle: "Processed attendance records" },

@@ -33,9 +33,9 @@ export default function UserManagement() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/admin/users');
+      const res = await fetch('/api/admin/users', { cache: 'no-store' });
       const data = await res.json();
-      setUsers(data);
+      setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch users', error);
     } finally {
@@ -48,15 +48,18 @@ export default function UserManagement() {
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleDelete = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user?')) return;
+  const handleDelete = async (user: UserWithData) => {
+    if (!confirm(`Are you sure you want to delete "${user.name}" (${user.role})? They will no longer be able to log in.`)) return;
     
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE', cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || 'Failed to delete user');
+        throw new Error(data.message || data.error || 'Failed to delete user');
       }
+      // Remove from list immediately, then refresh from server
+      setUsers(prev => prev.filter(u => u.id !== user.id));
+      alert(`"${user.name}" has been deleted.`);
       fetchUsers();
     } catch (err: any) {
       alert(err.message);
@@ -168,7 +171,8 @@ export default function UserManagement() {
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button 
-                              onClick={() => handleDelete(user.id)}
+                              onClick={() => handleDelete(user)}
+                              title="Delete user"
                               className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />

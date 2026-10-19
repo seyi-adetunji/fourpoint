@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { syncZKBioTimeInsert } from "@/lib/zkbiotime";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 /**
  * POST /api/shifts/bulk
@@ -13,6 +15,13 @@ import { syncZKBioTimeInsert } from "@/lib/zkbiotime";
  */
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as any)?.role;
+    if (!session || !["SUPER_ADMIN", "HR_ADMIN", "HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(role)) {
+      return NextResponse.json({ message: "Unauthorized. Insufficient permissions." }, { status: 403 });
+    }
+    const creatorUserId = ((session.user as any)?.id as string | undefined) ?? null;
+
     const body = await req.json();
     const { employeeIds: rawEmployeeIds, shiftTemplateIds, dates, status = "SCHEDULED" } = body as {
       employeeIds: string[];
@@ -70,6 +79,7 @@ export async function POST(req: Request) {
       workDate: Date;
       sequence: number;
       status: string;
+      assignedByUserId: string | null;
     }[] = [];
 
     for (const empId of employeeIds) {
@@ -89,6 +99,7 @@ export async function POST(req: Request) {
             workDate: date,
             sequence: seq,
             status: status as any,
+            assignedByUserId: creatorUserId,
           });
           nextSeq.set(dateKey, seq + 1);
         }

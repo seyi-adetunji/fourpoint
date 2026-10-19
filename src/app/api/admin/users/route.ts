@@ -21,7 +21,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const whereClause: any = {};
+  const whereClause: any = { isActive: true };
   if (isDeptScoped && userDeptId) {
     whereClause.departmentId = userDeptId;
   }

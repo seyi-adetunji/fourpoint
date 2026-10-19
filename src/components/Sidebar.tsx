@@ -32,6 +32,7 @@ const adminNav: NavItemConfig[] = [
   { name: "Departments", href: "/departments", icon: "Building2" },
   { name: "Shift Templates", href: "/shift-templates", icon: "Layers" },
   { name: "Shift Assignments", href: "/shifts", icon: "Calendar" },
+  { name: "Shift", href: "/shift-list", icon: "ClipboardCheck" },
   { 
     name: "Attendance", href: "/attendance", icon: "Clock",
     children: [
@@ -75,7 +76,7 @@ function getNavForRole(role: string): NavItemConfig[] {
       );
     case "SUPERVISOR":
       return adminNav.filter(item => 
-        ["Dashboard", "Employees", "Shift Assignments", "Attendance", "Reports"].includes(item.name)
+        ["Dashboard", "Employees", "Shift Assignments", "Shift", "Attendance", "Reports"].includes(item.name)
       );
     case "EMPLOYEE":
       return employeeNav;

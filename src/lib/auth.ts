@@ -35,6 +35,11 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid email or password");
         }
 
+        if (user.isActive === false) {
+          log('Rejected: User account is deactivated/deleted');
+          throw new Error("This account has been deactivated");
+        }
+
         let password = credentials.password;
         if (typeof password === 'string') {
           password = password.trim();

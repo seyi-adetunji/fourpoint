@@ -41,6 +41,7 @@ export async function POST(req: Request) {
     await syncZKBioTimeDelete(syncEntries);
 
     revalidatePath("/shifts");
+    revalidatePath("/shift-list");
 
     return NextResponse.json({ success: true, deleted: assignmentIds.length });
   } catch (err) {

@@ -28,21 +28,46 @@ export async function DELETE(
       return NextResponse.json({ message: "Cannot delete your own account" }, { status: 400 });
     }
 
-    try {
-      await prisma.user.delete({
+    // 1. Detach optional references that don't need to keep the user link
+    await prisma.$transaction([
+      prisma.attendanceException.updateMany({ where: { assignedToUserId: id }, data: { assignedToUserId: null } }),
+      prisma.attendanceException.updateMany({ where: { resolvedByUserId: id }, data: { resolvedByUserId: null } }),
+      prisma.attendanceCorrection.updateMany({ where: { approvedByUserId: id }, data: { approvedByUserId: null } }),
+      prisma.leaveRequest.updateMany({ where: { approvedByUserId: id }, data: { approvedByUserId: null } }),
+    ]);
+
+    // 2. History we want to keep (audit trail, requests raised, shifts created by this user)
+    const [auditCount, leaveReqCount, corrReqCount, shiftCount] = await Promise.all([
+      prisma.auditLog.count({ where: { userId: id } }),
+      prisma.leaveRequest.count({ where: { requestedByUserId: id } }),
+      prisma.attendanceCorrection.count({ where: { requestedByUserId: id } }),
+      prisma.shiftAssignment.count({ where: { assignedByUserId: id } }),
+    ]);
+
+    const archive = async () => {
+      // Keep the row for history, but remove access and free the email / employee link
+      await prisma.user.update({
         where: { id },
+        data: {
+          isActive: false,
+          passwordHash: "DEACTIVATED_USER",
+          email: `deleted-${Date.now()}-${targetUser.email}`,
+          employeeId: null,
+        },
       });
+      return NextResponse.json({ success: true, softDeleted: true });
+    };
+
+    if (auditCount + leaveReqCount + corrReqCount + shiftCount > 0) {
+      return await archive();
+    }
+
+    try {
+      await prisma.user.delete({ where: { id } });
     } catch (dbError: any) {
-      // P2003 is Prisma's error code for foreign key constraint failure
-      if (dbError.code === "P2003") {
-        await prisma.user.update({
-          where: { id },
-          data: { 
-            isActive: false,
-            passwordHash: "DEACTIVATED_USER", 
-          }
-        });
-        return NextResponse.json({ success: true, softDeleted: true });
+      // Any remaining FK constraint (P2003 / P2014) → archive instead
+      if (["P2003", "P2014"].includes(dbError?.code)) {
+        return await archive();
       }
       throw dbError;
     }
@@ -51,7 +76,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Failed to delete user:", error);
     return NextResponse.json(
-      { message: "Internal server error" },
+      { message: `Failed to delete user: ${error?.message ?? "Internal server error"}` },
       { status: 500 }
     );
   }

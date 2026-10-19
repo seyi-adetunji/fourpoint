@@ -162,6 +162,12 @@ export const SIDEBAR_NAV: NavItem[] = [
     permissions: [PERMISSIONS.SHIFTS_VIEW, PERMISSIONS.SHIFTS_VIEW_DEPARTMENT],
   },
   {
+    name: 'Shift',
+    href: '/shift-list',
+    icon: 'ClipboardCheck',
+    permissions: [PERMISSIONS.SHIFTS_VIEW, PERMISSIONS.SHIFTS_VIEW_DEPARTMENT],
+  },
+  {
     name: 'Attendance',
     href: '/attendance',
     icon: 'Clock',
@@ -300,6 +306,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission[]> = {
   '/employees': [PERMISSIONS.EMPLOYEES_VIEW, PERMISSIONS.EMPLOYEES_VIEW_DEPARTMENT],
   '/departments': [PERMISSIONS.SETTINGS_VIEW],
   '/shift-templates': [PERMISSIONS.SHIFTS_MANAGE],
+  '/shift-list': [PERMISSIONS.SHIFTS_VIEW, PERMISSIONS.SHIFTS_VIEW_DEPARTMENT],
   '/shifts': [PERMISSIONS.SHIFTS_VIEW, PERMISSIONS.SHIFTS_VIEW_DEPARTMENT],
   '/attendance': [PERMISSIONS.ATTENDANCE_VIEW, PERMISSIONS.ATTENDANCE_VIEW_DEPARTMENT],
   '/leave': [PERMISSIONS.LEAVE_VIEW_ALL, PERMISSIONS.LEAVE_APPROVE],
