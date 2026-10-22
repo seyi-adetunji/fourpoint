@@ -72,6 +72,11 @@ export async function AdminDashboard({ session }: { session: Session }) {
     prisma.iclockTerminal.findMany({ orderBy: { lastActivity: "desc" } }),
   ]);
 
+  const nowMs = new Date().getTime();
+  const activeTerminalCount = terminals.filter(
+    (term) => term.lastActivity && nowMs - new Date(term.lastActivity).getTime() < 3600000
+  ).length;
+
   const totalOvertimeHours = Math.round(overtimeResults.reduce((sum, r) => sum + r.overtimeMinutes, 0) / 60);
   const attendanceRate = todayShifts > 0 ? Math.round((todayPresent / todayShifts) * 100) : 0;
 
@@ -88,10 +93,18 @@ export async function AdminDashboard({ session }: { session: Session }) {
   });
 
   const cards = [
-    { title: "Total Staff", value: totalEmployees, icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
-    { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
-    { title: "Live Punches Today", value: livePunchesToday, icon: Timer, color: "text-indigo-600", bgColor: "bg-indigo-50", href: "/attendance/punches" },
-    { title: "Connected Clocks", value: terminalCount, icon: Clock, color: "text-emerald-700", bgColor: "bg-emerald-50", href: "#" },
+    { title: "Total Staff", value: totalEmployees, detail: "View Detail", icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
+    { title: "On Duty Today", value: todayPresent, detail: "View Detail", icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
+    { title: "Live Punches Today", value: livePunchesToday, detail: "View Detail", icon: Timer, color: "text-indigo-600", bgColor: "bg-indigo-50", href: "/attendance/punches" },
+    {
+      title: "Connected Clocks",
+      value: activeTerminalCount,
+      detail: `${activeTerminalCount} of ${terminalCount} Online`,
+      icon: Clock,
+      color: activeTerminalCount > 0 ? "text-emerald-700" : "text-gray-400",
+      bgColor: activeTerminalCount > 0 ? "bg-emerald-50" : "bg-gray-100",
+      href: "#terminal-status",
+    },
     { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: "/reports/daily" },
     { title: "Today's Shifts", value: todayShifts, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts" },
     { title: "Absent / No Show", value: absentCount, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
@@ -128,7 +141,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
                   <p className="big-metric-value">{card.value}</p>
                 </div>
                 <div className="flex items-center gap-1.5 mt-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  View Detail <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                  {(card as any).detail || "View Detail"} <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity">→</span>
                 </div>
               </div>
             </Link>
@@ -225,27 +238,38 @@ export async function AdminDashboard({ session }: { session: Session }) {
           )}
         </Card>
         {/* Biometric Terminals Status */}
-        <Card title="Terminal Status" description="Biometric device connectivity" noPadding>
-          <div className="divide-y divide-border">
-            {terminals.map((term) => (
-              <div key={term.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm text-primary">{term.alias || term.sn}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{term.terminalName} • {term.ipAddress}</p>
-                </div>
-                <div className="text-right">
-                  <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
-                    term.lastActivity && (new Date().getTime() - new Date(term.lastActivity).getTime() < 3600000)
-                      ? "bg-emerald-100 text-emerald-700" 
-                      : "bg-gray-100 text-gray-600"
-                  }`}>
-                    {term.lastActivity ? `Active ${format(new Date(term.lastActivity), "HH:mm")}` : "Offline"}
+        <div id="terminal-status">
+          <Card title="Terminal Status" description="Biometric device connectivity" noPadding>
+            <div className="divide-y divide-border">
+              {terminals.map((term) => {
+                const isOnline = Boolean(
+                  term.lastActivity && nowMs - new Date(term.lastActivity).getTime() < 3600000
+                );
+                return (
+                  <div key={term.id} className="p-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm text-primary">{term.alias || term.sn}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{term.terminalName} • {term.ipAddress}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+                        isOnline
+                          ? "bg-emerald-100 text-emerald-700" 
+                          : "bg-gray-100 text-gray-600"
+                      }`}>
+                        {isOnline && term.lastActivity
+                          ? `Online (${format(new Date(term.lastActivity), "HH:mm")})`
+                          : term.lastActivity
+                            ? `Offline (Last: ${format(new Date(term.lastActivity), "MMM d, HH:mm")})`
+                            : "Offline"}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   );
