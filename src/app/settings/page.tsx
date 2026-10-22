@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { Settings, Shield, Clock } from "lucide-react";
 import ManageShiftTemplates from "@/components/ManageShiftTemplates";
 import ManageDepartments from "@/components/ManageDepartments";
+import SystemUpdateManager from "@/components/admin/SystemUpdateManager";
 
 export default async function SettingsPage() {
   const [templates, departments] = await Promise.all([
@@ -42,10 +43,16 @@ export default async function SettingsPage() {
             <button className="text-left px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50 font-medium text-sm transition-colors">
               Notifications
             </button>
+            <a href="#system-update" className="text-left px-4 py-3 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold text-sm transition-colors block">
+              GitHub Auto-Update & Sync
+            </a>
           </nav>
         </div>
         
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          {/* GitHub Auto-Update & Sync Diagnostics */}
+          <SystemUpdateManager />
+
           {/* Shift Templates Management Area */}
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="p-6 border-b border-border bg-gray-50/50">
