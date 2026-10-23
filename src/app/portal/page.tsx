@@ -7,7 +7,9 @@ import { redirect } from "next/navigation";
 import { EmployeeDashboard } from "@/components/dashboards/EmployeeDashboard";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { startOfDay, format, addDays, subDays } from "date-fns";
+import { format, addDays, subDays } from "date-fns";
+import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 
 export default async function PortalPage() {
   const session = await getServerSession(authOptions);
@@ -27,15 +29,18 @@ export default async function PortalPage() {
     );
   }
 
-  const today = startOfDay(new Date());
-  const oneWeekLater = addDays(today, 7);
-  const oneWeekAgo = subDays(today, 7);
+  const today = getUTCMidnight();
+  const oneWeekLater = getUTCMidnight(format(addDays(today, 7), "yyyy-MM-dd"));
+  const oneWeekAgo = getUTCMidnight(format(subDays(today, 7), "yyyy-MM-dd"));
+
+  await syncAttendanceResultsForRange(oneWeekAgo, today);
 
   const [upcomingShifts, recentAttendance] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where: {
         employeeId: employeeId,
-        workDate: { gte: today, lte: oneWeekLater }
+        workDate: { gte: today, lte: oneWeekLater },
+        status: { not: "CANCELLED" },
       },
       include: { shiftTemplate: true },
       orderBy: [{ workDate: "asc" }, { sequence: "asc" }]
@@ -45,7 +50,7 @@ export default async function PortalPage() {
         employeeId: employeeId,
         workDate: { gte: oneWeekAgo, lte: today }
       },
-      orderBy: { workDate: "desc" }
+      orderBy: [{ workDate: "desc" }, { sequence: "asc" }]
     })
   ]);
 

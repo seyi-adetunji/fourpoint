@@ -1,38 +1,60 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
-import { format, startOfWeek, endOfWeek, parseISO } from "date-fns";
+import { format, startOfWeek, endOfWeek } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { ensureShiftAssignmentsAccurate } from "@/lib/shiftIntegrity";
 import { Filter, Calendar } from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { ExportButtons } from "@/components/ExportButtons";
 
 export default async function ShiftScheduleReport({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; deptId?: string; empId?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    deptId?: string;
+    empId?: string;
+  }>;
 }) {
   const params = await searchParams;
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role ?? "EMPLOYEE";
-  const userDeptId = (session?.user as any)?.departmentId as string | undefined;
+  const userDeptId = (session?.user as any)?.departmentId as
+    | number
+    | null
+    | undefined;
+  const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(role);
 
-  // Date range — default to current week
-  const today = getUTCMidnight();
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+  await ensureShiftAssignmentsAccurate();
 
-  const fromDate = params.from ? getUTCMidnight(params.from) : weekStart;
-  const toDate = params.to ? getUTCMidnight(params.to) : weekEnd;
+  // Date range — default to current local week normalized to UTC midnight
+  const nowLocal = new Date();
+  const weekStartStr = format(
+    startOfWeek(nowLocal, { weekStartsOn: 1 }),
+    "yyyy-MM-dd"
+  );
+  const weekEndStr = format(
+    endOfWeek(nowLocal, { weekStartsOn: 1 }),
+    "yyyy-MM-dd"
+  );
 
-  // HOD: scope to own department
-  const effectiveDeptId =
-    role === "HOD" ? userDeptId : params.deptId ? Number(params.deptId) : undefined;
+  const fromDate = getUTCMidnight(params.from || weekStartStr);
+  const toDate = getUTCMidnight(params.to || weekEndStr);
+
+  // HOD / Dept Admin / Supervisor: scope to own department
+  const effectiveDeptId = isDeptScoped
+    ? userDeptId ?? undefined
+    : params.deptId
+    ? Number(params.deptId)
+    : undefined;
 
   const [departments, employees, assignments] = await Promise.all([
     prisma.department.findMany({ orderBy: { name: "asc" } }),
     prisma.employee.findMany({
       where: {
-        ...(effectiveDeptId ? { departmentId: Number(effectiveDeptId) } : {}),
+        ...(effectiveDeptId ? { departmentId: effectiveDeptId } : {}),
       },
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, empCode: true },
@@ -40,22 +62,63 @@ export default async function ShiftScheduleReport({
     prisma.shiftAssignment.findMany({
       where: {
         workDate: { gte: fromDate, lte: toDate },
+        status: { not: "CANCELLED" },
         ...(params.empId ? { employeeId: Number(params.empId) } : {}),
-        ...(effectiveDeptId ? { employee: { departmentId: Number(effectiveDeptId) } } : {}),
+        ...(effectiveDeptId
+          ? { employee: { departmentId: effectiveDeptId } }
+          : {}),
       },
       include: {
         employee: { include: { department: true } },
         shiftTemplate: true,
       },
-      orderBy: [{ workDate: "asc" }, { employee: { fullName: "asc" } }, { sequence: "asc" }],
+      orderBy: [
+        { workDate: "asc" },
+        { employee: { fullName: "asc" } },
+        { sequence: "asc" },
+      ],
     }),
   ]);
 
-  // Stats
+  // Accurate stats based on active shift assignments per (employeeId, workDate)
   const totalAssignments = assignments.length;
-  const doubleShiftDays = assignments.filter((a) => a.sequence > 1).length;
   const uniqueEmployees = new Set(assignments.map((a) => a.employeeId)).size;
-  const activeAssignments = assignments.filter((a) => a.status === "SCHEDULED" || a.status === "CONFIRMED").length;
+  const countsByEmpDay = new Map<string, number>();
+  for (const a of assignments) {
+    const k = `${a.employeeId}|${a.workDate.toISOString().slice(0, 10)}`;
+    countsByEmpDay.set(k, (countsByEmpDay.get(k) || 0) + 1);
+  }
+  const doubleShiftDays = Array.from(countsByEmpDay.values()).filter(
+    (c) => c > 1
+  ).length;
+  const activeAssignments = assignments.filter(
+    (a) =>
+      a.status === "SCHEDULED" ||
+      a.status === "CONFIRMED" ||
+      a.status === "SWAPPED"
+  ).length;
+
+  const exportData = assignments.map((a) => ({
+    date: a.workDate.toISOString().slice(0, 10),
+    employee: a.employee.fullName,
+    empCode: a.employee.empCode,
+    department: a.employee.department?.name || "—",
+    shift: a.shiftTemplate.name,
+    timing: `${a.shiftTemplate.startTime} – ${a.shiftTemplate.endTime}`,
+    sequence: a.sequence,
+    status: a.status,
+  }));
+
+  const exportHeaders = [
+    { label: "Date", key: "date" },
+    { label: "Employee", key: "employee" },
+    { label: "Staff ID", key: "empCode" },
+    { label: "Department", key: "department" },
+    { label: "Shift", key: "shift" },
+    { label: "Timing", key: "timing" },
+    { label: "Sequence", key: "sequence" },
+    { label: "Status", key: "status" },
+  ];
 
   const STATUS_COLORS: Record<string, string> = {
     SCHEDULED: "bg-blue-50 text-blue-700 border-blue-200",
@@ -66,43 +129,59 @@ export default async function ShiftScheduleReport({
 
   return (
     <div className="page-container animate-fade-in">
-      <div className="page-header">
+      <div className="page-header justify-between">
         <div>
           <h1 className="page-title">Shift Schedule Report</h1>
           <p className="page-subtitle">
             {format(fromDate, "MMM d")} – {format(toDate, "MMM d, yyyy")}
-            {effectiveDeptId && departments.find((d) => d.id === effectiveDeptId)
+            {effectiveDeptId &&
+            departments.find((d) => d.id === effectiveDeptId)
               ? ` · ${departments.find((d) => d.id === effectiveDeptId)?.name}`
               : ""}
           </p>
         </div>
+        <ExportButtons
+          data={exportData}
+          filename={`shift_schedule_${fromDate.toISOString().slice(0, 10)}`}
+          headers={exportHeaders}
+        />
       </div>
 
       {/* Filters */}
       <div className="card p-4 mb-6">
         <form className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-600 uppercase">From</label>
+            <label className="text-xs font-semibold text-gray-600 uppercase">
+              From
+            </label>
             <input
               type="date"
               name="from"
-              defaultValue={params.from || format(weekStart, "yyyy-MM-dd")}
+              defaultValue={params.from || weekStartStr}
               className="input py-2"
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-600 uppercase">To</label>
+            <label className="text-xs font-semibold text-gray-600 uppercase">
+              To
+            </label>
             <input
               type="date"
               name="to"
-              defaultValue={params.to || format(weekEnd, "yyyy-MM-dd")}
+              defaultValue={params.to || weekEndStr}
               className="input py-2"
             />
           </div>
-          {role !== "HOD" && (
+          {!isDeptScoped && (
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-600 uppercase">Department</label>
-              <select name="deptId" className="input py-2" defaultValue={params.deptId || ""}>
+              <label className="text-xs font-semibold text-gray-600 uppercase">
+                Department
+              </label>
+              <select
+                name="deptId"
+                className="input py-2"
+                defaultValue={params.deptId || ""}
+              >
                 <option value="">All Departments</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
@@ -113,8 +192,14 @@ export default async function ShiftScheduleReport({
             </div>
           )}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-600 uppercase">Employee</label>
-            <select name="empId" className="input py-2" defaultValue={params.empId || ""}>
+            <label className="text-xs font-semibold text-gray-600 uppercase">
+              Employee
+            </label>
+            <select
+              name="empId"
+              className="input py-2"
+              defaultValue={params.empId || ""}
+            >
               <option value="">All Employees</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -123,7 +208,10 @@ export default async function ShiftScheduleReport({
               ))}
             </select>
           </div>
-          <button type="submit" className="btn btn-primary py-2 px-4 flex items-center gap-2">
+          <button
+            type="submit"
+            className="btn btn-primary py-2 px-4 flex items-center gap-2"
+          >
             <Filter className="w-4 h-4" />
             Filter
           </button>
@@ -133,10 +221,30 @@ export default async function ShiftScheduleReport({
       {/* Summary KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Assignments", value: totalAssignments, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Employees Scheduled", value: uniqueEmployees, color: "text-emerald-600", bg: "bg-emerald-50" },
-          { label: "Double-Shift Slots", value: doubleShiftDays, color: "text-violet-600", bg: "bg-violet-50" },
-          { label: "Active Scheduled", value: activeAssignments, color: "text-emerald-600", bg: "bg-emerald-50" },
+          {
+            label: "Total Assignments",
+            value: totalAssignments,
+            color: "text-blue-600",
+            bg: "bg-blue-50",
+          },
+          {
+            label: "Employees Scheduled",
+            value: uniqueEmployees,
+            color: "text-emerald-600",
+            bg: "bg-emerald-50",
+          },
+          {
+            label: "Double-Shift Days",
+            value: doubleShiftDays,
+            color: "text-violet-600",
+            bg: "bg-violet-50",
+          },
+          {
+            label: "Active Scheduled",
+            value: activeAssignments,
+            color: "text-emerald-600",
+            bg: "bg-emerald-50",
+          },
         ].map((kpi) => (
           <div key={kpi.label} className="card p-4 flex items-center gap-3">
             <div className={`p-2 rounded-xl ${kpi.bg}`}>
@@ -168,54 +276,79 @@ export default async function ShiftScheduleReport({
             <tbody className="divide-y divide-border">
               {assignments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-muted-foreground">
+                  <td
+                    colSpan={7}
+                    className="px-5 py-12 text-center text-muted-foreground"
+                  >
                     No shift assignments found for this period.
                   </td>
                 </tr>
               ) : (
-                assignments.map((a) => (
-                  <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-5 py-3.5 font-medium text-gray-900 whitespace-nowrap">
-                      {format(a.workDate, "EEE, MMM dd")}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="font-medium text-gray-900">{a.employee.fullName}</div>
-                      <span className="text-xs text-muted-foreground font-mono">{a.employee.empCode}</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-gray-600">{a.employee.department?.name || "—"}</td>
-                    <td className="px-5 py-3.5">
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border"
-                        style={{
-                          backgroundColor: (a.shiftTemplate.color || "#6b7280") + "18",
-                          color: a.shiftTemplate.color || "#6b7280",
-                          borderColor: (a.shiftTemplate.color || "#6b7280") + "35",
-                        }}
-                      >
-                        {a.shiftTemplate.name}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 font-mono text-xs">
-                      {a.shiftTemplate.startTime} – {a.shiftTemplate.endTime}
-                    </td>
-                    <td className="px-5 py-3.5 text-center">
-                      {a.sequence > 1 ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">
-                          ⚡{a.sequence}
+                assignments.map((a) => {
+                  const empDayCount =
+                    countsByEmpDay.get(
+                      `${a.employeeId}|${a.workDate.toISOString().slice(0, 10)}`
+                    ) || 1;
+                  return (
+                    <tr
+                      key={a.id}
+                      className="hover:bg-gray-50/50 transition-colors"
+                    >
+                      <td className="px-5 py-3.5 font-medium text-gray-900 whitespace-nowrap">
+                        {format(a.workDate, "EEE, MMM dd")}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="font-medium text-gray-900">
+                          {a.employee.fullName}
+                        </div>
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {a.employee.empCode}
                         </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">{a.sequence}</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_COLORS[a.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-                      >
-                        {a.status.replace(/_/g, " ")}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-600">
+                        {a.employee.department?.name || "—"}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border"
+                          style={{
+                            backgroundColor:
+                              (a.shiftTemplate.color || "#6b7280") + "18",
+                            color: a.shiftTemplate.color || "#6b7280",
+                            borderColor:
+                              (a.shiftTemplate.color || "#6b7280") + "35",
+                          }}
+                        >
+                          {a.shiftTemplate.name}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 font-mono text-xs">
+                        {a.shiftTemplate.startTime} – {a.shiftTemplate.endTime}
+                      </td>
+                      <td className="px-5 py-3.5 text-center">
+                        {empDayCount > 1 ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">
+                            ⚡{a.sequence}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">
+                            {a.sequence}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                            STATUS_COLORS[a.status] ??
+                            "bg-gray-50 text-gray-600 border-gray-200"
+                          }`}
+                        >
+                          {a.status.replace(/_/g, " ")}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { classifyDevice } from "@/lib/attendanceProcessor";
+import { ensureShiftAssignmentsAccurate } from "@/lib/shiftIntegrity";
 import { splitEmployeeName } from "@/lib/timesheetExport";
 import {
   PunchesClient,
@@ -77,6 +78,8 @@ export default async function AttendancePunchesPage({
   );
   const queryEndExclusive = addDays(queryEndInclusive, 2);
 
+  await ensureShiftAssignmentsAccurate();
+
   const [departments, rawPunches, shiftAssignments, deptEmployeesRaw] =
     await Promise.all([
       prisma.department.findMany({ orderBy: { name: "asc" } }),
@@ -109,14 +112,18 @@ export default async function AttendancePunchesPage({
         : Promise.resolve([]),
     ]);
 
-  // Build map of scheduled non-cancelled shift counts per (empCode|YYYY-MM-DD)
+  // Build map of scheduled active distinct shift counts per (empCode|YYYY-MM-DD)
   const shiftCountsByEmpDate: Record<string, number> = {};
+  const seenEmpDateTemplates = new Set<string>();
   for (const sa of shiftAssignments) {
     const code = sa.employee?.empCode;
     if (!code) continue;
     const dStr = sa.workDate.toISOString().slice(0, 10);
+    const dedupKey = `${code}|${dStr}|${sa.shiftTemplateId}`;
+    if (seenEmpDateTemplates.has(dedupKey)) continue;
+    seenEmpDateTemplates.add(dedupKey);
     const key = `${code}|${dStr}`;
-    shiftCountsByEmpDate[key] = (shiftCountsByEmpDate[key] || 0) + 1;
+    shiftCountsByEmpDate[key] = Math.min(2, (shiftCountsByEmpDate[key] || 0) + 1);
   }
 
   // Resolve any punches where empId was null by looking up empCode

@@ -1,39 +1,45 @@
 import prisma from "@/lib/prisma";
 
 /**
- * Maps our workforce ShiftTemplate names to ZKBioTime att_timeinterval IDs.
- * Morning(AM) Timetable → id 1
- * Afternoon(PM) Timetable → id 2
+ * Maps workforce ShiftTemplate names to ZKBioTime `att_timeinterval` IDs:
+ *   - Morning (AM) Timetable → id 1
+ *   - Afternoon (PM) Timetable → id 2
  */
-const SHIFT_NAME_TO_ZK_INTERVAL: Record<string, number> = {
-  Morning: 1,
-  Afternoon: 2,
-};
+export function resolveZKIntervalId(shiftTemplateName: string): number | null {
+  const normalized = (shiftTemplateName || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.startsWith("morning") || normalized === "am") return 1;
+  if (normalized.startsWith("afternoon") || normalized === "pm") return 2;
+  return null;
+}
 
-interface SyncEntry {
+export interface SyncEntry {
   employeeId: number;
   workDate: Date;
   shiftTemplateName: string;
 }
 
 /**
- * Inserts shift assignments into ZKBioTime's att_temporaryschedule table
+ * Inserts shift assignments into ZKBioTime's `public.att_temporaryschedule` table
  * so the canteen machine can dispense meal tickets.
  * Only Morning and Afternoon shifts are synced.
  */
 export async function syncZKBioTimeInsert(entries: SyncEntry[]): Promise<void> {
-  const filtered = entries.filter(
-    (e) => e.shiftTemplateName in SHIFT_NAME_TO_ZK_INTERVAL
-  );
-  if (filtered.length === 0) return;
+  if (entries.length === 0) return;
 
-  for (const entry of filtered) {
-    const intervalId = SHIFT_NAME_TO_ZK_INTERVAL[entry.shiftTemplateName];
-    // Format date as YYYY-MM-DD string for the DATE column
+  // Deduplicate by employeeId + date + intervalId
+  const seen = new Set<string>();
+
+  for (const entry of entries) {
+    const intervalId = resolveZKIntervalId(entry.shiftTemplateName);
+    if (intervalId === null) continue;
+
     const attDate = entry.workDate.toISOString().slice(0, 10);
+    const key = `${entry.employeeId}|${attDate}|${intervalId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     try {
-      // First, remove any existing record for this employee+date+interval to avoid duplicates
       await prisma.$executeRawUnsafe(
         `DELETE FROM public.att_temporaryschedule 
          WHERE employee_id = $1 AND att_date = $2 AND time_interval_id = $3`,
@@ -42,7 +48,6 @@ export async function syncZKBioTimeInsert(entries: SyncEntry[]): Promise<void> {
         intervalId
       );
 
-      // Insert the new schedule entry
       await prisma.$executeRawUnsafe(
         `INSERT INTO public.att_temporaryschedule 
          (create_time, change_time, status, att_date, employee_id, time_interval_id)
@@ -52,7 +57,6 @@ export async function syncZKBioTimeInsert(entries: SyncEntry[]): Promise<void> {
         intervalId
       );
     } catch (err) {
-      // Log but do not fail the entire operation if ZKBioTime sync fails
       console.error(
         `[ZKBioTime Sync] Failed to insert schedule for emp ${entry.employeeId} on ${attDate}:`,
         err
@@ -62,20 +66,39 @@ export async function syncZKBioTimeInsert(entries: SyncEntry[]): Promise<void> {
 }
 
 /**
- * Removes shift assignments from ZKBioTime's att_temporaryschedule table.
- * Only Morning and Afternoon shifts are affected.
+ * Removes shift assignments from ZKBioTime's `public.att_temporaryschedule` table,
+ * unless the employee still has another active shift on that date using the same interval.
  */
 export async function syncZKBioTimeDelete(entries: SyncEntry[]): Promise<void> {
-  const filtered = entries.filter(
-    (e) => e.shiftTemplateName in SHIFT_NAME_TO_ZK_INTERVAL
-  );
-  if (filtered.length === 0) return;
+  if (entries.length === 0) return;
 
-  for (const entry of filtered) {
-    const intervalId = SHIFT_NAME_TO_ZK_INTERVAL[entry.shiftTemplateName];
+  const seen = new Set<string>();
+
+  for (const entry of entries) {
+    const intervalId = resolveZKIntervalId(entry.shiftTemplateName);
+    if (intervalId === null) continue;
+
     const attDate = entry.workDate.toISOString().slice(0, 10);
+    const key = `${entry.employeeId}|${attDate}|${intervalId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     try {
+      // Check if employee still has an active shift on this date that maps to the same ZKBioTime interval
+      const remainingOnDay = await prisma.shiftAssignment.findMany({
+        where: {
+          employeeId: entry.employeeId,
+          workDate: new Date(`${attDate}T00:00:00.000Z`),
+          status: { not: "CANCELLED" },
+        },
+        include: { shiftTemplate: { select: { name: true } } },
+      });
+
+      const stillNeedsInterval = remainingOnDay.some(
+        (r) => resolveZKIntervalId(r.shiftTemplate.name) === intervalId
+      );
+      if (stillNeedsInterval) continue;
+
       await prisma.$executeRawUnsafe(
         `DELETE FROM public.att_temporaryschedule 
          WHERE employee_id = $1 AND att_date = $2 AND time_interval_id = $3`,

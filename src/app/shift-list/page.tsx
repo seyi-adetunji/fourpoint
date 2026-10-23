@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { ensureShiftAssignmentsAccurate } from "@/lib/shiftIntegrity";
 import { ShiftListClient, type ShiftListRow } from "@/components/shifts/ShiftListClient";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,8 @@ export default async function ShiftListPage({
   else if (creatorRole) where.assignedBy = { role: creatorRole };
 
   // ── Queries ─────────────────────────────────────────────────────────────────
+  await ensureShiftAssignmentsAccurate();
+
   const [assignments, departments, creators] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where,

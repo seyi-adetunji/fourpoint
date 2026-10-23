@@ -1,77 +1,180 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { syncZKBioTimeInsert } from "@/lib/zkbiotime";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getUTCMidnight } from "@/lib/dateUtils";
+import {
+  deleteShiftAssignmentsSafely,
+  invalidateShiftIntegrityCache,
+  resequenceEmployeeDays,
+} from "@/lib/shiftIntegrity";
 
 /**
  * POST /api/shifts/bulk
- * Body: { employeeIds: string[], shiftTemplateIds: string[], dates: string[] }
+ * Body: { employeeIds: (number|string)[], shiftTemplateIds: string[], dates: string[], status?: string }
  *
- * For each (employeeId × date) pair, the templates are stacked with auto-incremented
- * sequence numbers, starting after any already-existing assignments for that pair.
- * e.g. if 2 templates selected and employee already has seq=1 on that date, the
- * new ones get seq=2 and seq=3.
+ * Guarantees:
+ *   - All `workDate` values are normalized to exact UTC midnight (`@db.Date`).
+ *   - Department-scoped users (`HOD`, `DEPT_ADMIN`, `SUPERVISOR`) can only assign shifts to their own department.
+ *   - Dead `CANCELLED` rows on target dates are cleaned up before assignment.
+ *   - Duplicate same-template assignments on the same `(employeeId, workDate, shiftTemplateId)` are skipped
+ *     automatically so re-assigning a shift never creates fake "Double Shifts".
+ *   - Legitimate Double Shifts (`Morning` + `Afternoon`) are sequenced chronologically (`1`, `2`).
+ *   - Syncs `public.att_temporaryschedule` for ZKBioTime Canteen meal tickets.
  */
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const role = (session?.user as any)?.role;
-    if (!session || !["SUPER_ADMIN", "HR_ADMIN", "HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(role)) {
-      return NextResponse.json({ message: "Unauthorized. Insufficient permissions." }, { status: 403 });
+    if (
+      !session ||
+      !["SUPER_ADMIN", "HR_ADMIN", "HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(
+        role
+      )
+    ) {
+      return NextResponse.json(
+        { message: "Unauthorized. Insufficient permissions." },
+        { status: 403 }
+      );
     }
-    const creatorUserId = ((session.user as any)?.id as string | undefined) ?? null;
+
+    const creatorUserId =
+      ((session.user as any)?.id as string | undefined) ?? null;
+    const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(role);
+    const userDeptId = (session.user as any)?.departmentId as
+      | number
+      | null
+      | undefined;
 
     const body = await req.json();
-    const { employeeIds: rawEmployeeIds, shiftTemplateIds, dates, status = "SCHEDULED" } = body as {
-      employeeIds: string[];
+    const {
+      employeeIds: rawEmployeeIds,
+      shiftTemplateIds: rawTemplateIds,
+      dates,
+      status = "SCHEDULED",
+    } = body as {
+      employeeIds: Array<string | number>;
       shiftTemplateIds: string[];
       dates: string[];
       status?: string;
     };
-    // Convert string IDs from form to Int for Prisma
-    const employeeIds = rawEmployeeIds.map(Number).filter(n => !isNaN(n));
+
+    const requestedEmpIds = Array.from(
+      new Set((rawEmployeeIds || []).map(Number).filter((n) => !isNaN(n)))
+    );
+    const shiftTemplateIds = Array.from(
+      new Set((rawTemplateIds || []).filter(Boolean))
+    );
 
     if (
-      !Array.isArray(employeeIds) || employeeIds.length === 0 ||
-      !Array.isArray(shiftTemplateIds) || shiftTemplateIds.length === 0 ||
-      !Array.isArray(dates) || dates.length === 0
+      requestedEmpIds.length === 0 ||
+      shiftTemplateIds.length === 0 ||
+      !Array.isArray(dates) ||
+      dates.length === 0
     ) {
       return NextResponse.json(
-        { message: "employeeIds, shiftTemplateIds, and dates are all required arrays." },
+        {
+          message:
+            "employeeIds, shiftTemplateIds, and dates are all required arrays.",
+        },
         { status: 400 }
       );
     }
 
-    // Parse and validate dates
-    const parsedDates = dates
-      .map((d) => new Date(d))
-      .filter((d) => !isNaN(d.getTime()));
+    // Validate employees & enforce department scope for HOD / Supervisor
+    const validEmployees = await prisma.employee.findMany({
+      where: {
+        id: { in: requestedEmpIds },
+        ...(isDeptScoped && userDeptId ? { departmentId: userDeptId } : {}),
+      },
+      select: { id: true },
+    });
+    const employeeIds = validEmployees.map((e) => e.id);
 
-    if (parsedDates.length === 0) {
-      return NextResponse.json({ message: "No valid dates provided." }, { status: 400 });
+    if (employeeIds.length === 0) {
+      return NextResponse.json(
+        { message: "No valid employees found in your authorized scope." },
+        { status: 403 }
+      );
     }
 
-    // ── Fetch existing sequence numbers for all (employee, date) pairs ──────────
+    // Validate shift templates & sort chronologically by startTime
+    const templates = await prisma.shiftTemplate.findMany({
+      where: { id: { in: shiftTemplateIds } },
+      select: { id: true, name: true, startTime: true },
+    });
+    if (templates.length === 0) {
+      return NextResponse.json(
+        { message: "No valid shift templates selected." },
+        { status: 400 }
+      );
+    }
+    const orderedTemplates = [...templates].sort((a, b) =>
+      a.startTime.localeCompare(b.startTime)
+    );
+    const templateMap = new Map(orderedTemplates.map((t) => [t.id, t.name]));
+
+    // Normalize and deduplicate dates to UTC midnight
+    const uniqueDateStrs = Array.from(
+      new Set(
+        dates
+          .map((d) => String(d).trim().slice(0, 10))
+          .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+      )
+    );
+    const parsedDates = uniqueDateStrs.map((d) => getUTCMidnight(d));
+
+    if (parsedDates.length === 0) {
+      return NextResponse.json(
+        { message: "No valid dates provided." },
+        { status: 400 }
+      );
+    }
+
+    // 1. Clean up any dead CANCELLED rows on these (employee, date) pairs first
+    const cancelledExisting = await prisma.shiftAssignment.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        workDate: { in: parsedDates },
+        status: "CANCELLED",
+      },
+      select: { id: true },
+    });
+    if (cancelledExisting.length > 0) {
+      await deleteShiftAssignmentsSafely(cancelledExisting.map((c) => c.id));
+    }
+
+    // 2. Fetch existing active assignments for all (employee, date) pairs
     const existing = await prisma.shiftAssignment.findMany({
       where: {
         employeeId: { in: employeeIds },
         workDate: { in: parsedDates },
+        status: { not: "CANCELLED" },
       },
-      select: { employeeId: true, workDate: true, sequence: true },
+      select: {
+        employeeId: true,
+        workDate: true,
+        sequence: true,
+        shiftTemplateId: true,
+      },
     });
 
-    // Build a lookup: "empId|date" => max existing sequence
     const existingMaxSeq = new Map<string, number>();
+    const existingTemplatesSet = new Set<string>();
     for (const e of existing) {
-      const key = `${e.employeeId}|${e.workDate.toISOString().slice(0, 10)}`;
-      const cur = existingMaxSeq.get(key) ?? 0;
-      if (e.sequence > cur) existingMaxSeq.set(key, e.sequence);
+      const dStr = e.workDate.toISOString().slice(0, 10);
+      const dayKey = `${e.employeeId}|${dStr}`;
+      const cur = existingMaxSeq.get(dayKey) ?? 0;
+      if (e.sequence > cur) existingMaxSeq.set(dayKey, e.sequence);
+      existingTemplatesSet.add(`${dayKey}|${e.shiftTemplateId}`);
     }
 
-    // ── Build records with correct sequence numbers ───────────────────────────
-    // Track next sequence per (empId, date) as we build the list
+    // 3. Build only non-duplicate records
     const nextSeq = new Map<string, number>();
+    const normalizedStatus =
+      status === "CONFIRMED" || status === "SWAPPED" ? status : "SCHEDULED";
 
     const records: {
       employeeId: number;
@@ -82,23 +185,32 @@ export async function POST(req: Request) {
       assignedByUserId: string | null;
     }[] = [];
 
+    let skippedDuplicates = 0;
+
     for (const empId of employeeIds) {
       for (const date of parsedDates) {
-        const dateKey = `${empId}|${date.toISOString().slice(0, 10)}`;
+        const dStr = date.toISOString().slice(0, 10);
+        const dateKey = `${empId}|${dStr}`;
 
-        // Start after whatever already exists for this pair
         if (!nextSeq.has(dateKey)) {
           nextSeq.set(dateKey, (existingMaxSeq.get(dateKey) ?? 0) + 1);
         }
 
-        for (const tplId of shiftTemplateIds) {
+        for (const tpl of orderedTemplates) {
+          const tplKey = `${dateKey}|${tpl.id}`;
+          if (existingTemplatesSet.has(tplKey)) {
+            skippedDuplicates += 1;
+            continue;
+          }
+          existingTemplatesSet.add(tplKey);
+
           const seq = nextSeq.get(dateKey)!;
           records.push({
             employeeId: empId,
-            shiftTemplateId: tplId,
+            shiftTemplateId: tpl.id,
             workDate: date,
             sequence: seq,
-            status: status as any,
+            status: normalizedStatus,
             assignedByUserId: creatorUserId,
           });
           nextSeq.set(dateKey, seq + 1);
@@ -107,24 +219,32 @@ export async function POST(req: Request) {
     }
 
     if (records.length === 0) {
-      return NextResponse.json({ message: "No valid records to create." }, { status: 400 });
+      return NextResponse.json(
+        {
+          created: 0,
+          skipped: skippedDuplicates,
+          total: 0,
+          message:
+            skippedDuplicates > 0
+              ? "Selected shift(s) are already assigned on the chosen date(s)."
+              : "No new shift assignments to create.",
+        },
+        { status: 200 }
+      );
     }
 
-    // Use createMany with skipDuplicates as a safety net
     const result = await prisma.shiftAssignment.createMany({
       data: records,
       skipDuplicates: true,
     });
 
-    // ── ZKBioTime Sync: insert into att_temporaryschedule for canteen meal tickets ──
-    if (result.count > 0) {
-      // Fetch shift template names for the IDs used
-      const templates = await prisma.shiftTemplate.findMany({
-        where: { id: { in: shiftTemplateIds } },
-        select: { id: true, name: true },
-      });
-      const templateMap = new Map(templates.map((t) => [t.id, t.name]));
+    // 4. Ensure chronological sequence numbering (Morning = 1, Afternoon = 2)
+    await resequenceEmployeeDays(
+      records.map((r) => ({ employeeId: r.employeeId, workDate: r.workDate }))
+    );
 
+    // 5. Sync ZKBioTime temporary schedule for Canteen meal tickets
+    if (result.count > 0) {
       const syncEntries = records
         .map((r) => ({
           employeeId: r.employeeId,
@@ -136,12 +256,28 @@ export async function POST(req: Request) {
       await syncZKBioTimeInsert(syncEntries);
     }
 
+    invalidateShiftIntegrityCache();
+
+    revalidatePath("/");
+    revalidatePath("/shifts");
+    revalidatePath("/shift-list");
+    revalidatePath("/attendance/punches");
+    revalidatePath("/attendance/results");
+    revalidatePath("/reports");
+
     return NextResponse.json(
-      { created: result.count, total: records.length },
+      {
+        created: result.count,
+        skipped: skippedDuplicates,
+        total: records.length,
+      },
       { status: 201 }
     );
   } catch (err) {
     console.error("[POST /api/shifts/bulk]", err);
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { message: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

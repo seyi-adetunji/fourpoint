@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Download } from "lucide-react";
 
@@ -14,6 +15,7 @@ export default async function OvertimeReport({ searchParams }: { searchParams: P
   
   const startDate = getUTCMidnight(startStr);
   const endDate = endStr ? getUTCMidnight(endStr) : startDate;
+  await syncAttendanceResultsForRange(startDate, endDate);
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   
   const results = await prisma.attendanceResult.findMany({

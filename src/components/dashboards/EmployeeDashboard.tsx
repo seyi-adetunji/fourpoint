@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
 import { addDays, format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import Link from "next/link";
 
 export async function EmployeeDashboard({ session }: { session: Session }) {
@@ -24,10 +25,12 @@ export async function EmployeeDashboard({ session }: { session: Session }) {
     );
   }
 
+  await syncAttendanceResultsForRange(today, today);
+
   const [employee, todayShifts, todayAttendance, weeklyRota, pendingLeaves, pendingCorrections] = await Promise.all([
     prisma.employee.findUnique({ where: { id: employeeId }, include: { department: true } }),
     prisma.shiftAssignment.findMany({
-      where: { employeeId, workDate: today },
+      where: { employeeId, workDate: today, status: { not: "CANCELLED" } },
       include: { shiftTemplate: true },
       orderBy: { sequence: "asc" }
     }),
@@ -36,7 +39,7 @@ export async function EmployeeDashboard({ session }: { session: Session }) {
       orderBy: { sequence: "asc" }
     }),
     prisma.shiftAssignment.findMany({
-      where: { employeeId, workDate: { gte: today, lte: weekEnd } },
+      where: { employeeId, workDate: { gte: today, lte: weekEnd }, status: { not: "CANCELLED" } },
       include: { shiftTemplate: true },
       orderBy: [{ workDate: "asc" }, { sequence: "asc" }]
     }),

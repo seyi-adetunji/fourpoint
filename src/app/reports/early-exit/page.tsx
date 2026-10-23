@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { Clock, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ export default async function EarlyExitReport({
 }) {
   const params = await searchParams;
   const targetDate = getUTCMidnight(params.date as string | undefined);
+  await syncAttendanceResultsForRange(targetDate, targetDate);
 
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   

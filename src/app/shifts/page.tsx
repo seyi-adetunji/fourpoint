@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { ensureShiftAssignmentsAccurate } from "@/lib/shiftIntegrity";
 import AssignShiftModal from "@/components/AssignShiftModal";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -37,6 +38,8 @@ export default async function ShiftsPage({
   const page = resolvedSearchParams?.page ? parseInt(resolvedSearchParams.page as string) : 1;
   const pageSize = 20;
 
+  await ensureShiftAssignmentsAccurate();
+
   const [shiftAssignments, employees] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where: {
@@ -55,7 +58,9 @@ export default async function ShiftsPage({
             ]
           }
         }),
-        ...(statusFilter && { status: statusFilter }),
+        ...(statusFilter
+          ? { status: statusFilter }
+          : { status: { not: "CANCELLED" } }),
       },
       include: {
         employee: { include: { department: true } },
@@ -79,12 +84,12 @@ export default async function ShiftsPage({
   ]);
 
   const exportData = shiftAssignments.map(a => ({
-    date: format(a.workDate, "yyyy-MM-dd"),
+    date: a.workDate.toISOString().slice(0, 10),
     employee: a.employee.fullName,
     empCode: a.employee.empCode,
     department: a.employee.department?.name || "—",
     shift: a.shiftTemplate.name,
-    time: a.shiftTemplate.startTime < "12:00" ? "AM" : "PM",
+    time: `${a.shiftTemplate.startTime} – ${a.shiftTemplate.endTime}`,
     status: a.status
   }));
 

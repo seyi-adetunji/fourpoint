@@ -1,7 +1,9 @@
 import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { LayoutGrid, Filter } from "lucide-react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format } from "date-fns";
+import { getMonthRangeUTC } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 
 export default async function DepartmentSummaryReport({
   searchParams,
@@ -9,9 +11,9 @@ export default async function DepartmentSummaryReport({
   searchParams: Promise<{ month?: string }>;
 }) {
   const params = await searchParams;
-  const monthStr = params.month || format(new Date(), "yyyy-MM");
-  const start = startOfMonth(new Date(monthStr));
-  const end = endOfMonth(new Date(monthStr));
+  const { monthStr, start, end } = getMonthRangeUTC(params.month);
+
+  await syncAttendanceResultsForRange(start, end);
 
   const departments = await prisma.department.findMany({
     include: {
@@ -58,7 +60,7 @@ export default async function DepartmentSummaryReport({
               acc.totalLate += r.lateMinutes;
               acc.totalEarly += r.earlyExitMinutes;
               acc.totalWork += r.workedMinutes;
-              if (r.status === "PRESENT") acc.presentDays += 1;
+              if (r.actualIn !== null) acc.presentDays += 1;
               if (r.status === "ABSENT" || r.status === "NO_SHOW") acc.absentDays += 1;
             });
             return acc;

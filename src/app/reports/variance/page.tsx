@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { format, differenceInMinutes } from "date-fns";
 import { getUTCMidnight, calculateMinutesBetweenTimes } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import { ExportButtons } from "@/components/ExportButtons";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -17,8 +18,9 @@ export default async function VarianceReportPage({ searchParams }: { searchParam
   const endDateStr = params?.endDate as string | undefined;
 
   const startDate = startDateStr ? getUTCMidnight(startDateStr) : getUTCMidnight();
-  const endDate = endDateStr ? getUTCMidnight(endDateStr) : new Date(startDate);
-  if (!endDateStr) endDate.setDate(startDate.getDate() + 1); // Default to one day if not specified
+  const endDate = endDateStr ? getUTCMidnight(endDateStr) : startDate;
+
+  await syncAttendanceResultsForRange(startDate, endDate);
 
   const results = await prisma.attendanceResult.findMany({
     where: {

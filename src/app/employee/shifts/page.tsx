@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { format, addDays } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { ensureShiftAssignmentsAccurate } from "@/lib/shiftIntegrity";
 
 export default async function EmployeeShiftsPage() {
   const session = await getServerSession(authOptions);
@@ -16,11 +17,17 @@ export default async function EmployeeShiftsPage() {
     return <div className="page-container"><p className="text-muted-foreground">Account not linked to employee profile.</p></div>;
   }
 
+  await ensureShiftAssignmentsAccurate();
+
   const today = getUTCMidnight();
   const fourWeeksOut = addDays(today, 28);
 
   const shifts = await prisma.shiftAssignment.findMany({
-    where: { employeeId, workDate: { gte: today, lte: fourWeeksOut } },
+    where: {
+      employeeId,
+      workDate: { gte: today, lte: fourWeeksOut },
+      status: { not: "CANCELLED" },
+    },
     include: { shiftTemplate: true },
     orderBy: [{ workDate: "asc" }, { sequence: "asc" }],
   });

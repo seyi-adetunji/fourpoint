@@ -1,8 +1,8 @@
 /**
  * dailyAttendanceService.ts
- * 
+ *
  * Attendance Intelligence Service (Presence vs. Rota)
- * 
+ *
  * Reads:
  *   - public.iclock_transaction   → raw biometric punches
  *   - public.iclock_terminal      → terminal metadata (Staff Gate vs Canteen Device)
@@ -13,8 +13,9 @@
 
 import prisma from "@/lib/prisma";
 import { classifyDevice } from "@/lib/attendanceProcessor";
-import { addDays } from "date-fns";
+import { addDays, format, subDays } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { ensureShiftAssignmentsAccurate } from "@/lib/shiftIntegrity";
 
 const SHORT_SHIFT_THRESHOLD_MINUTES = 120;
 
@@ -64,12 +65,15 @@ export async function getDailyAttendanceReport(
   filterEmployeeId?: number | null,
   endDate?: Date
 ): Promise<DailyAttendanceRecord[]> {
-  const startUTC = getUTCMidnight(startDate.toISOString().slice(0, 10));
-  const endUTC = endDate
-    ? getUTCMidnight(endDate.toISOString().slice(0, 10))
-    : startUTC;
-  const rangeEndExclusive = addDays(endUTC, 1);
-  const isSingleDay = startUTC.getTime() === endUTC.getTime();
+  await ensureShiftAssignmentsAccurate();
+
+  const startIso = startDate.toISOString().slice(0, 10);
+  const endIso = (endDate ?? startDate).toISOString().slice(0, 10);
+  const startUTC = getUTCMidnight(startIso);
+  const endUTC = getUTCMidnight(endIso);
+  const punchWindowStart = subDays(startUTC, 1);
+  const punchWindowEnd = addDays(endUTC, 2);
+  const isSingleDay = startIso === endIso;
 
   // 1. Fetch all employees (do NOT filter by isActive: true because ZKBioTime stores is_active = false)
   const employees = await prisma.employee.findMany({
@@ -87,10 +91,10 @@ export async function getDailyAttendanceReport(
   const empByCode = new Map(employees.map((e) => [e.empCode, e]));
   const employeeIds = employees.map((e) => e.id);
 
-  // 2. Fetch biometric punches in the date range
+  // 2. Fetch biometric punches in the date range (with ±1d buffer for local WAT calendar dates)
   const rawPunches = await prisma.iclockTransaction.findMany({
     where: {
-      punchTime: { gte: startUTC, lt: rangeEndExclusive },
+      punchTime: { gte: punchWindowStart, lt: punchWindowEnd },
       OR: [
         { empId: { in: employeeIds } },
         { empCode: { in: Array.from(empByCode.keys()) } },
@@ -100,13 +104,12 @@ export async function getDailyAttendanceReport(
     orderBy: { punchTime: "asc" },
   });
 
-  // Group punches by "empId|YYYY-MM-DD"
+  // Group punches by "empId|YYYY-MM-DD" in local hotel calendar time
   const gatePunchesByEmpDay = new Map<
     string,
     { punchTime: Date; deviceLabel: string }[]
   >();
   const canteenPunchesByEmpDay = new Map<string, Date[]>();
-  const activeDatesSet = new Set<string>();
 
   for (const p of rawPunches) {
     const emp =
@@ -114,9 +117,10 @@ export async function getDailyAttendanceReport(
       (p.empCode ? empByCode.get(p.empCode) : undefined);
     if (!emp) continue;
 
-    const dateStr = p.punchTime.toISOString().slice(0, 10);
+    const dateStr = format(new Date(p.punchTime), "yyyy-MM-dd");
+    if (dateStr < startIso || dateStr > endIso) continue;
+
     const key = `${emp.id}|${dateStr}`;
-    activeDatesSet.add(dateStr);
 
     const dev = classifyDevice(p);
     if (dev.category === "CANTEEN") {
@@ -135,7 +139,7 @@ export async function getDailyAttendanceReport(
     }
   }
 
-  // 3. Fetch shift assignments in the date range
+  // 3. Fetch active shift assignments in the date range (supports both Single and Double Shifts)
   const shiftAssignments = await prisma.shiftAssignment.findMany({
     where: {
       workDate: { gte: startUTC, lte: endUTC },
@@ -143,174 +147,125 @@ export async function getDailyAttendanceReport(
       employeeId: { in: employeeIds },
     },
     include: { shiftTemplate: true },
-    orderBy: [{ workDate: "desc" }, { sequence: "asc" }],
+    orderBy: [{ workDate: "asc" }, { sequence: "asc" }],
   });
 
-  const shiftByEmpDay = new Map<string, (typeof shiftAssignments)[number]>();
+  const shiftsByEmpDay = new Map<string, (typeof shiftAssignments)>();
   for (const a of shiftAssignments) {
     const dateStr = a.workDate.toISOString().slice(0, 10);
     const key = `${a.employeeId}|${dateStr}`;
-    activeDatesSet.add(dateStr);
-    if (!shiftByEmpDay.has(key)) {
-      shiftByEmpDay.set(key, a);
-    }
+    const list = shiftsByEmpDay.get(key) || [];
+    list.push(a);
+    shiftsByEmpDay.set(key, list);
   }
+
+  const buildRecord = (
+    employee: (typeof employees)[number],
+    dateStr: string
+  ): DailyAttendanceRecord => {
+    const key = `${employee.id}|${dateStr}`;
+    const gatePunches = gatePunchesByEmpDay.get(key) ?? [];
+    const canteenList = canteenPunchesByEmpDay.get(key) ?? [];
+    const dayShifts = shiftsByEmpDay.get(key) ?? [];
+
+    const sortedShifts = [...dayShifts].sort((a, b) => {
+      const tCmp = a.shiftTemplate.startTime.localeCompare(
+        b.shiftTemplate.startTime
+      );
+      return tCmp !== 0 ? tCmp : a.sequence - b.sequence;
+    });
+
+    const hasGatePunches = gatePunches.length > 0;
+    const hasAnyPunches = hasGatePunches || canteenList.length > 0;
+    const hasShift = sortedShifts.length > 0;
+
+    const firstPunch = hasGatePunches
+      ? gatePunches[0].punchTime
+      : canteenList.length > 0
+      ? canteenList[0]
+      : null;
+    const lastPunch =
+      hasGatePunches && gatePunches.length > 1
+        ? gatePunches[gatePunches.length - 1].punchTime
+        : firstPunch;
+
+    let durationMinutes: number | null = null;
+    if (firstPunch && lastPunch && firstPunch !== lastPunch) {
+      durationMinutes = Math.round(
+        (lastPunch.getTime() - firstPunch.getTime()) / 60000
+      );
+    }
+
+    const isShortShift =
+      durationMinutes !== null &&
+      durationMinutes < SHORT_SHIFT_THRESHOLD_MINUTES;
+
+    const deviceUsed = hasGatePunches
+      ? gatePunches[0].deviceLabel
+      : canteenList.length > 0
+      ? "Canteen Device"
+      : null;
+
+    let status: AttendanceStatus;
+    if (hasShift && hasAnyPunches) status = "ON_SHIFT_PRESENT";
+    else if (hasShift && !hasAnyPunches) status = "ON_SHIFT_ABSENT";
+    else if (!hasShift && hasAnyPunches) status = "OFF_SHIFT_PRESENT";
+    else status = "NO_SHIFT_NO_PUNCH";
+
+    const shiftTemplateName = hasShift
+      ? sortedShifts.map((s) => s.shiftTemplate.name).join(" + ")
+      : null;
+    const shiftStart = hasShift
+      ? formatHHMM(sortedShifts[0].shiftTemplate.startTime)
+      : null;
+    const shiftEnd = hasShift
+      ? formatHHMM(
+          sortedShifts[sortedShifts.length - 1].shiftTemplate.endTime
+        )
+      : null;
+
+    return {
+      key,
+      workDate: dateStr,
+      employeeId: employee.id,
+      empCode: employee.empCode,
+      name: `${employee.fullName}${employee.lastName ? " " + employee.lastName : ""}`.trim(),
+      department: employee.department?.name ?? "Unassigned",
+      departmentId: employee.departmentId ?? null,
+      shiftStart,
+      shiftEnd,
+      shiftTemplateName,
+      firstPunch,
+      lastPunch,
+      canteenPunches: canteenList.map((d) => format(new Date(d), "HH:mm")),
+      durationMinutes,
+      isShortShift,
+      status,
+      deviceUsed,
+    };
+  };
 
   const report: DailyAttendanceRecord[] = [];
 
   if (isSingleDay) {
-    // Single-day mode: evaluate every employee in the selected scope for that date
-    const dateStr = startUTC.toISOString().slice(0, 10);
     for (const employee of employees) {
-      const key = `${employee.id}|${dateStr}`;
-      const gatePunches = gatePunchesByEmpDay.get(key) ?? [];
-      const canteenList = canteenPunchesByEmpDay.get(key) ?? [];
-      const assignment = shiftByEmpDay.get(key) ?? null;
-
-      // If no Staff Gate punch, check if they at least punched on Canteen Device
-      const hasGatePunches = gatePunches.length > 0;
-      const hasAnyPunches = hasGatePunches || canteenList.length > 0;
-      const hasShift = assignment !== null;
-
-      const firstPunch = hasGatePunches
-        ? gatePunches[0].punchTime
-        : canteenList.length > 0
-        ? canteenList[0]
-        : null;
-      const lastPunch =
-        hasGatePunches && gatePunches.length > 1
-          ? gatePunches[gatePunches.length - 1].punchTime
-          : firstPunch;
-
-      let durationMinutes: number | null = null;
-      if (firstPunch && lastPunch && firstPunch !== lastPunch) {
-        durationMinutes = Math.round(
-          (lastPunch.getTime() - firstPunch.getTime()) / 60000
-        );
-      }
-
-      const isShortShift =
-        durationMinutes !== null &&
-        durationMinutes < SHORT_SHIFT_THRESHOLD_MINUTES;
-
-      const deviceUsed = hasGatePunches
-        ? gatePunches[0].deviceLabel
-        : canteenList.length > 0
-        ? "Canteen Device"
-        : null;
-
-      let status: AttendanceStatus;
-      if (hasShift && hasAnyPunches) status = "ON_SHIFT_PRESENT";
-      else if (hasShift && !hasAnyPunches) status = "ON_SHIFT_ABSENT";
-      else if (!hasShift && hasAnyPunches) status = "OFF_SHIFT_PRESENT";
-      else status = "NO_SHIFT_NO_PUNCH";
-
-      report.push({
-        key,
-        workDate: dateStr,
-        employeeId: employee.id,
-        empCode: employee.empCode,
-        name: `${employee.fullName}${employee.lastName ? " " + employee.lastName : ""}`.trim(),
-        department: employee.department?.name ?? "Unassigned",
-        departmentId: employee.departmentId ?? null,
-        shiftStart: assignment
-          ? formatHHMM(assignment.shiftTemplate.startTime)
-          : null,
-        shiftEnd: assignment
-          ? formatHHMM(assignment.shiftTemplate.endTime)
-          : null,
-        shiftTemplateName: assignment?.shiftTemplate.name ?? null,
-        firstPunch,
-        lastPunch,
-        canteenPunches: canteenList.map((d) => d.toISOString().slice(11, 16)),
-        durationMinutes,
-        isShortShift,
-        status,
-        deviceUsed,
-      });
+      report.push(buildRecord(employee, startIso));
     }
   } else {
-    // Multi-day range mode: evaluate all active (employee, date) pairs that have a shift OR a punch
     const allEmpDayKeys = new Set<string>([
       ...gatePunchesByEmpDay.keys(),
       ...canteenPunchesByEmpDay.keys(),
-      ...shiftByEmpDay.keys(),
+      ...shiftsByEmpDay.keys(),
     ]);
 
     for (const key of allEmpDayKeys) {
       const [empIdStr, dateStr] = key.split("|");
       const employee = empById.get(Number(empIdStr));
       if (!employee) continue;
-
-      const gatePunches = gatePunchesByEmpDay.get(key) ?? [];
-      const canteenList = canteenPunchesByEmpDay.get(key) ?? [];
-      const assignment = shiftByEmpDay.get(key) ?? null;
-
-      const hasGatePunches = gatePunches.length > 0;
-      const hasAnyPunches = hasGatePunches || canteenList.length > 0;
-      const hasShift = assignment !== null;
-
-      const firstPunch = hasGatePunches
-        ? gatePunches[0].punchTime
-        : canteenList.length > 0
-        ? canteenList[0]
-        : null;
-      const lastPunch =
-        hasGatePunches && gatePunches.length > 1
-          ? gatePunches[gatePunches.length - 1].punchTime
-          : firstPunch;
-
-      let durationMinutes: number | null = null;
-      if (firstPunch && lastPunch && firstPunch !== lastPunch) {
-        durationMinutes = Math.round(
-          (lastPunch.getTime() - firstPunch.getTime()) / 60000
-        );
-      }
-
-      const isShortShift =
-        durationMinutes !== null &&
-        durationMinutes < SHORT_SHIFT_THRESHOLD_MINUTES;
-
-      const deviceUsed = hasGatePunches
-        ? gatePunches[0].deviceLabel
-        : canteenList.length > 0
-        ? "Canteen Device"
-        : null;
-
-      let status: AttendanceStatus;
-      if (hasShift && hasAnyPunches) status = "ON_SHIFT_PRESENT";
-      else if (hasShift && !hasAnyPunches) status = "ON_SHIFT_ABSENT";
-      else if (!hasShift && hasAnyPunches) status = "OFF_SHIFT_PRESENT";
-      else status = "NO_SHIFT_NO_PUNCH";
-
-      report.push({
-        key,
-        workDate: dateStr,
-        employeeId: employee.id,
-        empCode: employee.empCode,
-        name: `${employee.fullName}${employee.lastName ? " " + employee.lastName : ""}`.trim(),
-        department: employee.department?.name ?? "Unassigned",
-        departmentId: employee.departmentId ?? null,
-        shiftStart: assignment
-          ? formatHHMM(assignment.shiftTemplate.startTime)
-          : null,
-        shiftEnd: assignment
-          ? formatHHMM(assignment.shiftTemplate.endTime)
-          : null,
-        shiftTemplateName: assignment?.shiftTemplate.name ?? null,
-        firstPunch,
-        lastPunch,
-        canteenPunches: canteenList.map((d) => d.toISOString().slice(11, 16)),
-        durationMinutes,
-        isShortShift,
-        status,
-        deviceUsed,
-      });
+      report.push(buildRecord(employee, dateStr));
     }
   }
 
-  // Sort so active statuses (ON_SHIFT_PRESENT, ON_SHIFT_ABSENT, OFF_SHIFT_PRESENT) always appear at the top,
-  // then by date descending, then by employee name
   report.sort((a, b) => {
     const pDiff = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
     if (pDiff !== 0) return pDiff;
@@ -329,12 +284,16 @@ export interface AttendanceSummary {
   noContext: number;
 }
 
-export function summariseReport(records: DailyAttendanceRecord[]): AttendanceSummary {
+export function summariseReport(
+  records: DailyAttendanceRecord[]
+): AttendanceSummary {
   return {
     total: records.length,
-    onShiftPresent: records.filter((r) => r.status === "ON_SHIFT_PRESENT").length,
+    onShiftPresent: records.filter((r) => r.status === "ON_SHIFT_PRESENT")
+      .length,
     onShiftAbsent: records.filter((r) => r.status === "ON_SHIFT_ABSENT").length,
-    offShiftPresent: records.filter((r) => r.status === "OFF_SHIFT_PRESENT").length,
+    offShiftPresent: records.filter((r) => r.status === "OFF_SHIFT_PRESENT")
+      .length,
     noContext: records.filter((r) => r.status === "NO_SHIFT_NO_PUNCH").length,
   };
 }

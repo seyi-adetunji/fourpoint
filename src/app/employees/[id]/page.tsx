@@ -2,27 +2,36 @@ export const dynamic = "force-dynamic";
 
 import prisma from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { ArrowLeft, Briefcase, Calendar, Clock, AlertCircle, Building2, User } from "lucide-react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Card } from "@/components/ui/Card";
+import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 
 export default async function EmployeeDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const today = getUTCMidnight();
+  await syncAttendanceResultsForRange(
+    getUTCMidnight(format(subDays(today, 14), "yyyy-MM-dd")),
+    today
+  );
+
   const employee = await prisma.employee.findUnique({
     where: { id: Number(id) },
     include: {
       department: true,
       users: true,
       shiftAssignments: {
+        where: { status: { not: "CANCELLED" } },
         include: { shiftTemplate: true },
-        orderBy: { workDate: "desc" },
+        orderBy: [{ workDate: "desc" }, { sequence: "asc" }],
         take: 10
       },
       attendanceResults: {
         include: { shiftTemplate: true },
-        orderBy: { workDate: "desc" },
+        orderBy: [{ workDate: "desc" }, { sequence: "asc" }],
         take: 10
       },
       attendanceExceptions: {

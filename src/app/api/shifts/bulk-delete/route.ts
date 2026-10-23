@@ -3,49 +3,69 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { syncZKBioTimeDelete } from "@/lib/zkbiotime";
+import { deleteShiftAssignmentsSafely } from "@/lib/shiftIntegrity";
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const role = (session?.user as any)?.role;
 
-    // Only allow HODs, Supervisors and Admins
-    if (!["SUPER_ADMIN", "HR_ADMIN", "HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(role)) {
-      return NextResponse.json({ message: "Unauthorized. Insufficient permissions." }, { status: 403 });
+    if (
+      !session ||
+      !["SUPER_ADMIN", "HR_ADMIN", "HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(
+        role
+      )
+    ) {
+      return NextResponse.json(
+        { message: "Unauthorized. Insufficient permissions." },
+        { status: 403 }
+      );
     }
+
+    const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(role);
+    const userDeptId = (session.user as any)?.departmentId as
+      | number
+      | null
+      | undefined;
 
     const body = await req.json();
     const { assignmentIds } = body as { assignmentIds: string[] };
 
     if (!Array.isArray(assignmentIds) || assignmentIds.length === 0) {
-      return NextResponse.json({ message: "No assignment IDs provided." }, { status: 400 });
+      return NextResponse.json(
+        { message: "No assignment IDs provided." },
+        { status: 400 }
+      );
     }
 
-    // Fetch assignment details BEFORE deleting so we can sync ZKBioTime
-    const assignments = await prisma.shiftAssignment.findMany({
-      where: { id: { in: assignmentIds } },
-      include: { shiftTemplate: { select: { name: true } } },
+    // Scope to authorized department if HOD / Dept Admin / Supervisor
+    const authorized = await prisma.shiftAssignment.findMany({
+      where: {
+        id: { in: assignmentIds },
+        ...(isDeptScoped && userDeptId
+          ? { employee: { departmentId: userDeptId } }
+          : {}),
+      },
+      select: { id: true },
     });
 
-    await prisma.shiftAssignment.deleteMany({
-      where: { id: { in: assignmentIds } },
-    });
+    const deletedCount = await deleteShiftAssignmentsSafely(
+      authorized.map((a) => a.id)
+    );
 
-    // ── ZKBioTime Sync: remove from att_temporaryschedule ──
-    const syncEntries = assignments.map((a) => ({
-      employeeId: a.employeeId,
-      workDate: a.workDate,
-      shiftTemplateName: a.shiftTemplate.name,
-    }));
-    await syncZKBioTimeDelete(syncEntries);
-
+    revalidatePath("/");
     revalidatePath("/shifts");
     revalidatePath("/shift-list");
+    revalidatePath("/attendance/punches");
+    revalidatePath("/attendance/results");
+    revalidatePath("/reports");
 
-    return NextResponse.json({ success: true, deleted: assignmentIds.length });
+    return NextResponse.json({ success: true, deleted: deletedCount });
   } catch (err) {
     console.error("[POST /api/shifts/bulk-delete]", err);
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { message: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

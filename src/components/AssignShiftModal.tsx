@@ -289,7 +289,15 @@ export default function AssignShiftModal({ employees }: AssignShiftModalProps) {
           return;
         }
 
-        setSuccessMsg(`✓ ${data.created} shift(s) assigned successfully.`);
+        const skippedNote =
+          data.skipped && data.skipped > 0
+            ? ` (${data.skipped} duplicate${data.skipped > 1 ? "s" : ""} skipped)`
+            : "";
+        setSuccessMsg(
+          data.created > 0
+            ? `✓ ${data.created} shift(s) assigned successfully${skippedNote}.`
+            : `✓ ${data.message || "Selected shift(s) are already assigned."}`
+        );
         await refetchAssignments();
         setTimeout(() => {
           setOpen(false);

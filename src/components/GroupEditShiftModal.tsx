@@ -124,34 +124,47 @@ export default function GroupEditShiftModal({ assignments, readOnly = false }: G
 
   const handleSave = () => {
     setError(null);
+
+    const remainingActive = rows.filter((r) => r.action !== "delete");
+    const chosenTemplates = remainingActive.map((r) => r.shiftTemplateId).filter(Boolean);
+    if (new Set(chosenTemplates).size !== chosenTemplates.length) {
+      setError("An employee cannot be assigned the exact same shift template twice on the same date.");
+      return;
+    }
+
     startTransition(async () => {
       try {
         const toDelete = rows.filter((r) => r.action === "delete");
         const toUpdate = rows.filter((r) => r.action === "update");
 
-        // Fire all mutations in parallel
-        const ops: Promise<Response>[] = [
-          ...toDelete.map((r) =>
-            fetch(`/api/shifts/${r.id}`, { method: "DELETE" })
-          ),
-          ...toUpdate.map((r) =>
-            fetch(`/api/shifts/${r.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                shiftTemplateId: r.shiftTemplateId,
-                sequence: r.sequence,
-              }),
-            })
-          ),
-        ];
+        // 1. Execute deletions atomically first so sequence slots and ZKBioTime intervals clear cleanly
+        if (toDelete.length > 0) {
+          const delRes = await fetch("/api/shifts/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ assignmentIds: toDelete.map((r) => r.id) }),
+          });
+          if (!delRes.ok) {
+            const data = await delRes.json().catch(() => ({}));
+            setError(data.message || "Failed to delete removed shift sequence(s).");
+            return;
+          }
+        }
 
-        const results = await Promise.all(ops);
-        const failed = results.find((r) => !r.ok);
-        if (failed) {
-          const data = await failed.json().catch(() => ({}));
-          setError(data.message || "One or more updates failed.");
-          return;
+        // 2. Execute updates sequentially to avoid sequence collisions
+        for (const r of toUpdate) {
+          const updRes = await fetch(`/api/shifts/${r.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              shiftTemplateId: r.shiftTemplateId,
+            }),
+          });
+          if (!updRes.ok) {
+            const data = await updRes.json().catch(() => ({}));
+            setError(data.message || "One or more shift updates failed.");
+            return;
+          }
         }
 
         setOpen(false);

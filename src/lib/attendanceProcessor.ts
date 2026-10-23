@@ -9,6 +9,7 @@ import {
   subDays,
 } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { ensureShiftAssignmentsAccurate } from "@/lib/shiftIntegrity";
 
 export type DeviceCategory = "STAFF_GATE" | "CANTEEN";
 
@@ -66,23 +67,49 @@ export function classifyDevice(punch: {
   };
 }
 
+function buildShiftBounds(
+  dateStr: string,
+  template: { startTime: string; endTime: string }
+): { expectedStart: Date; expectedEnd: Date; scheduledMinutes: number } {
+  const [startH, startM] = template.startTime.split(":").map(Number);
+  const [endH, endM] = template.endTime.split(":").map(Number);
+
+  const expectedStart = new Date(`${dateStr}T00:00:00`);
+  expectedStart.setHours(startH || 0, startM || 0, 0, 0);
+
+  let expectedEnd = new Date(`${dateStr}T00:00:00`);
+  expectedEnd.setHours(endH || 0, endM || 0, 0, 0);
+  if (expectedEnd.getTime() <= expectedStart.getTime()) {
+    expectedEnd = addDays(expectedEnd, 1);
+  }
+
+  const scheduledMinutes = Math.max(
+    60,
+    differenceInMinutes(expectedEnd, expectedStart)
+  );
+  return { expectedStart, expectedEnd, scheduledMinutes };
+}
+
 /**
  * Synchronizes / computes `AttendanceResult` rows for a given date range
  * using:
- *   1. Scheduled `ShiftAssignment` records (in `workforce.ShiftAssignment`)
+ *   1. Clean, deduplicated `ShiftAssignment` records (in `workforce.ShiftAssignment`)
  *   2. Biometric punches from `public.iclock_transaction` (separating Staff Gate vs Canteen)
  *
  * Properly handles:
+ *   - Shift integrity normalization before evaluation (no cancelled/duplicate ghost shifts)
  *   - Local hotel timezone (WAT / server local time) when comparing shift start/end times
+ *   - Both single shifts and continuous or split Double Shifts (`Morning` + `Afternoon`)
  *   - Active ongoing shifts today (employees who clocked IN today and haven't clocked OUT yet
  *     are marked PRESENT or LATE rather than MISSING_PUNCH)
- *   - Lateness calculation on arrival (`punchIn`) even before clock-out
  *   - Unscheduled Staff Gate punches matched against Morning / Afternoon templates
  */
 export async function syncAttendanceResultsForRange(
   startDate: Date,
   endDate: Date
 ) {
+  await ensureShiftAssignmentsAccurate();
+
   const startIso = startDate.toISOString().slice(0, 10);
   const endIso = endDate.toISOString().slice(0, 10);
   const startUTC = getUTCMidnight(startIso);
@@ -90,7 +117,7 @@ export async function syncAttendanceResultsForRange(
   const now = new Date();
   const todayIso = format(now, "yyyy-MM-dd");
 
-  // Fetch all shifts in [startUTC, endUTC]
+  // Fetch all active shifts in [startUTC, endUTC]
   const [assignments, allTemplates] = await Promise.all([
     prisma.shiftAssignment.findMany({
       where: {
@@ -154,6 +181,49 @@ export async function syncAttendanceResultsForRange(
     (p) => p.resolvedEmpId != null && p.device.category === "CANTEEN"
   );
 
+  // Clear existing non-corrected AttendanceResult rows across the entire [startUTC, endUTC] range
+  // so that even dates whose shifts were deleted are completely purged of stale ABSENT records.
+  await prisma.attendanceException.deleteMany({
+    where: {
+      workDate: { gte: startUTC, lte: endUTC },
+      status: "PENDING",
+      OR: [
+        { attendanceResultId: null },
+        { attendanceResult: { corrections: { none: {} } } },
+      ],
+    },
+  });
+  await prisma.attendanceResult.deleteMany({
+    where: {
+      workDate: { gte: startUTC, lte: endUTC },
+      corrections: { none: {} },
+    },
+  });
+
+  // Track any (employeeId, dateStr, sequence) preserved because of manual corrections
+  const correctedResults = await prisma.attendanceResult.findMany({
+    where: {
+      workDate: { gte: startUTC, lte: endUTC },
+    },
+    select: {
+      employeeId: true,
+      workDate: true,
+      sequence: true,
+      shiftAssignmentId: true,
+    },
+  });
+  const correctedKeys = new Set(
+    correctedResults.map(
+      (cr) =>
+        `${cr.employeeId}|${cr.workDate.toISOString().slice(0, 10)}|${cr.sequence}`
+    )
+  );
+  const correctedAssignmentIds = new Set(
+    correctedResults
+      .map((cr) => cr.shiftAssignmentId)
+      .filter((id): id is string => Boolean(id))
+  );
+
   // Collect all distinct dates in [startIso, endIso] that have either a shift assignment or a gate punch
   const activeDateStrings = new Set<string>();
   for (const a of assignments) {
@@ -204,21 +274,6 @@ export async function syncAttendanceResultsForRange(
         t.name.toLowerCase().includes("afternoon")
     ) || defaultTemplate;
 
-  // Clear existing AttendanceResult rows in these active dates that don't have manual corrections
-  const targetDates = Array.from(activeDateStrings).map((d) => getUTCMidnight(d));
-  await prisma.attendanceException.deleteMany({
-    where: {
-      workDate: { in: targetDates },
-      status: "PENDING",
-    },
-  });
-  await prisma.attendanceResult.deleteMany({
-    where: {
-      workDate: { in: targetDates },
-      corrections: { none: {} },
-    },
-  });
-
   const rowsToInsert: Array<{
     employeeId: number;
     workDate: Date;
@@ -255,29 +310,143 @@ export async function syncAttendanceResultsForRange(
     const consumedPunchIds = new Set<number>();
 
     // 1. Process all employees with scheduled shifts on this day
-    for (const [employeeId, empAssignments] of empAssignMap.entries()) {
+    for (const [employeeId, rawEmpAssignments] of empAssignMap.entries()) {
+      const empAssignments = [...rawEmpAssignments].sort((a, b) => {
+        const tCmp = a.shiftTemplate.startTime.localeCompare(
+          b.shiftTemplate.startTime
+        );
+        return tCmp !== 0 ? tCmp : a.sequence - b.sequence;
+      });
+
       const empGatePunches = gatePunches.filter(
         (p) => p.resolvedEmpId === employeeId
       );
       const empCanteenPunches = canteenPunches.filter(
         (p) => p.resolvedEmpId === employeeId && p.localDateStr === dateStr
       );
+      const canteenNote =
+        empCanteenPunches.length > 0
+          ? `Canteen: ${empCanteenPunches
+              .map((c) => format(new Date(c.punchTime), "HH:mm"))
+              .join(", ")}`
+          : null;
 
-      for (const assignment of empAssignments) {
-        const template = assignment.shiftTemplate;
-        const [startH, startM] = template.startTime.split(":").map(Number);
-        const [endH, endM] = template.endTime.split(":").map(Number);
-
-        // Construct expected start/end in local server time (matching biometric clock time)
-        const expectedStart = new Date(`${dateStr}T00:00:00`);
-        expectedStart.setHours(startH || 0, startM || 0, 0, 0);
-
-        let expectedEnd = new Date(`${dateStr}T00:00:00`);
-        expectedEnd.setHours(endH || 0, endM || 0, 0, 0);
-        if (expectedEnd.getTime() <= expectedStart.getTime()) {
-          expectedEnd = addDays(expectedEnd, 1);
+      // Helper to evaluate a single shift given matched [punchInTime, punchOutTime]
+      const evaluateSingleShift = (
+        assignment: (typeof empAssignments)[number],
+        punchInTime: Date | null,
+        punchOutTime: Date | null,
+        overrideWorkedMinutes?: number,
+        overrideOvertimeMinutes?: number,
+        extraRemark?: string
+      ) => {
+        if (
+          correctedAssignmentIds.has(assignment.id) ||
+          correctedKeys.has(`${employeeId}|${dateStr}|${assignment.sequence}`)
+        ) {
+          return;
         }
 
+        const template = assignment.shiftTemplate;
+        const { expectedStart, expectedEnd, scheduledMinutes } =
+          buildShiftBounds(dateStr, template);
+
+        let status = "PRESENT";
+        let lateMinutes = 0;
+        let earlyExitMinutes = 0;
+        let workedMinutes = 0;
+        let overtimeMinutes = 0;
+        const remarkParts: string[] = [];
+        if (extraRemark) remarkParts.push(extraRemark);
+
+        if (!punchInTime) {
+          if (
+            isFuture ||
+            (isToday &&
+              isBefore(now, addMinutes(expectedStart, template.graceLate)))
+          ) {
+            return;
+          }
+          status = "ABSENT";
+          remarkParts.push("No Staff Gate punch recorded");
+        } else {
+          const lateCutoff = addMinutes(expectedStart, template.graceLate);
+          const isLate = isAfter(punchInTime, lateCutoff);
+          if (isLate) {
+            lateMinutes = Math.max(
+              0,
+              differenceInMinutes(punchInTime, expectedStart)
+            );
+            remarkParts.push(`${lateMinutes}m late`);
+          }
+
+          if (!punchOutTime) {
+            if (isToday || isBefore(now, addMinutes(expectedEnd, 180))) {
+              status = isLate ? "LATE" : "PRESENT";
+              workedMinutes =
+                overrideWorkedMinutes ??
+                Math.max(0, differenceInMinutes(now, punchInTime));
+              remarkParts.push("On duty (clocked in)");
+            } else {
+              status = isLate ? "LATE" : "MISSING_PUNCH";
+              workedMinutes = overrideWorkedMinutes ?? 0;
+              remarkParts.push("Clocked in at Staff Gate; missing clock-out");
+            }
+          } else {
+            workedMinutes =
+              overrideWorkedMinutes ??
+              Math.max(0, differenceInMinutes(punchOutTime, punchInTime));
+
+            status = isLate ? "LATE" : "PRESENT";
+
+            if (
+              isBefore(
+                punchOutTime,
+                addMinutes(expectedEnd, -template.graceEarly)
+              )
+            ) {
+              earlyExitMinutes = Math.max(
+                0,
+                differenceInMinutes(expectedEnd, punchOutTime)
+              );
+              status = isLate ? "LATE_AND_EARLY" : "EARLY_EXIT";
+              remarkParts.push(`${earlyExitMinutes}m early exit`);
+            }
+
+            if (overrideOvertimeMinutes !== undefined) {
+              overtimeMinutes = overrideOvertimeMinutes;
+            } else if (workedMinutes > scheduledMinutes + 30) {
+              overtimeMinutes = workedMinutes - scheduledMinutes;
+            }
+          }
+        }
+
+        if (canteenNote) remarkParts.push(canteenNote);
+
+        rowsToInsert.push({
+          employeeId,
+          workDate: dayUTC,
+          shiftTemplateId: template.id,
+          shiftAssignmentId: assignment.id,
+          sequence: assignment.sequence,
+          actualIn: punchInTime,
+          actualOut: punchOutTime,
+          workedMinutes,
+          lateMinutes,
+          earlyExitMinutes,
+          overtimeMinutes,
+          breakMinutes: template.breakMinutes || 60,
+          status,
+          remarks: remarkParts.join(" · ") || "Staff Gate verified",
+        });
+      };
+
+      if (empAssignments.length === 1) {
+        const assignment = empAssignments[0];
+        const { expectedStart, expectedEnd } = buildShiftBounds(
+          dateStr,
+          assignment.shiftTemplate
+        );
         const windowStart = addMinutes(expectedStart, -240);
         const windowEnd = addMinutes(expectedEnd, 300);
 
@@ -289,7 +458,6 @@ export async function syncAttendanceResultsForRange(
         );
 
         const punchIn = availablePunches.length > 0 ? availablePunches[0] : null;
-        // Only treat last punch as punchOut if there are >=2 punches separated by at least 15 minutes
         const lastCandidate =
           availablePunches.length > 1
             ? availablePunches[availablePunches.length - 1]
@@ -305,100 +473,143 @@ export async function syncAttendanceResultsForRange(
           consumedPunchIds.add(ap.id);
         }
 
-        let status = "PRESENT";
-        let lateMinutes = 0;
-        let earlyExitMinutes = 0;
-        let workedMinutes = 0;
-        let overtimeMinutes = 0;
-        const remarkParts: string[] = [];
+        evaluateSingleShift(
+          assignment,
+          punchIn?.punchTime ?? null,
+          punchOut?.punchTime ?? null
+        );
+      } else {
+        // Multi-shift / Double Shift day (e.g. Morning + Afternoon)
+        const shiftBounds = empAssignments.map((a) => ({
+          assignment: a,
+          ...buildShiftBounds(dateStr, a.shiftTemplate),
+        }));
 
-        if (!punchIn) {
-          if (isFuture || (isToday && isBefore(now, addMinutes(expectedStart, template.graceLate)))) {
-            // Shift hasn't started yet today — skip marking absent prematurely
-            continue;
+        const firstStart = shiftBounds[0].expectedStart;
+        const latestEnd = shiftBounds.reduce(
+          (maxEnd, sb) => (sb.expectedEnd > maxEnd ? sb.expectedEnd : maxEnd),
+          shiftBounds[0].expectedEnd
+        );
+
+        const dayWindowStart = addMinutes(firstStart, -240);
+        const dayWindowEnd = addMinutes(latestEnd, 360);
+
+        const dayPunches = empGatePunches.filter(
+          (p) =>
+            !consumedPunchIds.has(p.id) &&
+            p.punchTime >= dayWindowStart &&
+            p.punchTime <= dayWindowEnd
+        );
+        for (const dp of dayPunches) {
+          consumedPunchIds.add(dp.id);
+        }
+
+        if (dayPunches.length === 0) {
+          for (const sb of shiftBounds) {
+            evaluateSingleShift(sb.assignment, null, null);
           }
-          status = "ABSENT";
-          remarkParts.push("No Staff Gate punch recorded");
+          continue;
+        }
+
+        const firstPunch = dayPunches[0].punchTime;
+        const rawLast =
+          dayPunches.length > 1
+            ? dayPunches[dayPunches.length - 1].punchTime
+            : null;
+        const lastPunch =
+          rawLast && differenceInMinutes(rawLast, firstPunch) >= 15
+            ? rawLast
+            : null;
+
+        const secondShift = shiftBounds[1];
+        const arrivedOnlyForSecondShift =
+          isAfter(firstPunch, addMinutes(shiftBounds[0].expectedStart, 240)) &&
+          !isBefore(firstPunch, addMinutes(secondShift.expectedStart, -90));
+
+        if (arrivedOnlyForSecondShift) {
+          // Missed Shift 1, attended Shift 2+
+          evaluateSingleShift(shiftBounds[0].assignment, null, null);
+          for (let i = 1; i < shiftBounds.length; i++) {
+            evaluateSingleShift(
+              shiftBounds[i].assignment,
+              i === 1 ? firstPunch : null,
+              i === 1 ? lastPunch : null
+            );
+          }
+          continue;
+        }
+
+        // Employee arrived for Shift 1; check if they also covered Shift 2+
+        const totalScheduled = shiftBounds.reduce(
+          (sum, sb) => sum + sb.scheduledMinutes,
+          0
+        );
+        const totalSpanMinutes = lastPunch
+          ? Math.max(0, differenceInMinutes(lastPunch, firstPunch))
+          : isToday
+          ? Math.max(0, differenceInMinutes(now, firstPunch))
+          : 0;
+
+        // Covered second shift if:
+        // - Still on duty today and Shift 2 has started, OR
+        // - Clocked out at least 2h into Shift 2, OR worked >= 10 hours continuously
+        const coveredSecondShift = lastPunch
+          ? isAfter(lastPunch, addMinutes(secondShift.expectedStart, 120)) ||
+            totalSpanMinutes >= 600
+          : isToday && !isBefore(now, secondShift.expectedStart);
+
+        if (coveredSecondShift) {
+          const s1Worked = Math.min(
+            totalSpanMinutes,
+            shiftBounds[0].scheduledMinutes
+          );
+          const s2Worked = Math.max(0, totalSpanMinutes - s1Worked);
+          const totalOT =
+            lastPunch && totalSpanMinutes > totalScheduled + 30
+              ? totalSpanMinutes - totalScheduled
+              : 0;
+
+          const handoffTime =
+            shiftBounds[0].expectedEnd < secondShift.expectedStart
+              ? secondShift.expectedStart
+              : shiftBounds[0].expectedEnd;
+
+          const s1Out =
+            lastPunch && lastPunch < handoffTime
+              ? lastPunch
+              : lastPunch || (isToday && isAfter(now, handoffTime))
+              ? handoffTime
+              : null;
+
+          evaluateSingleShift(
+            shiftBounds[0].assignment,
+            firstPunch,
+            s1Out,
+            s1Worked,
+            0,
+            "Double shift (1/2)"
+          );
+
+          const s2In = firstPunch > handoffTime ? firstPunch : handoffTime;
+          evaluateSingleShift(
+            secondShift.assignment,
+            s2In,
+            lastPunch,
+            s2Worked,
+            totalOT,
+            "Double shift (2/2)"
+          );
+
+          for (let i = 2; i < shiftBounds.length; i++) {
+            evaluateSingleShift(shiftBounds[i].assignment, null, null);
+          }
         } else {
-          // Always evaluate lateness on punchIn!
-          const lateCutoff = addMinutes(expectedStart, template.graceLate);
-          const isLate = isAfter(punchIn.punchTime, lateCutoff);
-          if (isLate) {
-            lateMinutes = Math.max(
-              0,
-              differenceInMinutes(punchIn.punchTime, expectedStart)
-            );
-            remarkParts.push(`${lateMinutes}m late`);
-          }
-
-          if (!punchOut) {
-            // Still on duty today (or shift ended recently) -> mark PRESENT or LATE!
-            if (isToday || isBefore(now, addMinutes(expectedEnd, 180))) {
-              status = isLate ? "LATE" : "PRESENT";
-              workedMinutes = Math.max(
-                0,
-                differenceInMinutes(now, punchIn.punchTime)
-              );
-              remarkParts.push("On duty (clocked in)");
-            } else {
-              status = isLate ? "LATE" : "MISSING_PUNCH";
-              remarkParts.push("Clocked in at Staff Gate; missing clock-out");
-            }
-          } else {
-            workedMinutes = Math.max(
-              0,
-              differenceInMinutes(punchOut.punchTime, punchIn.punchTime)
-            );
-            const scheduledMinutes = Math.max(
-              0,
-              differenceInMinutes(expectedEnd, expectedStart)
-            );
-
-            status = isLate ? "LATE" : "PRESENT";
-
-            if (
-              isBefore(
-                punchOut.punchTime,
-                addMinutes(expectedEnd, -template.graceEarly)
-              )
-            ) {
-              earlyExitMinutes = Math.max(
-                0,
-                differenceInMinutes(expectedEnd, punchOut.punchTime)
-              );
-              status = isLate ? "LATE_AND_EARLY" : "EARLY_EXIT";
-              remarkParts.push(`${earlyExitMinutes}m early exit`);
-            }
-
-            if (workedMinutes > scheduledMinutes + 30) {
-              overtimeMinutes = workedMinutes - scheduledMinutes;
-            }
+          // Only Shift 1 worked so far (Shift 2 either hasn't started today or was missed)
+          evaluateSingleShift(shiftBounds[0].assignment, firstPunch, lastPunch);
+          for (let i = 1; i < shiftBounds.length; i++) {
+            evaluateSingleShift(shiftBounds[i].assignment, null, null);
           }
         }
-
-        if (empCanteenPunches.length > 0) {
-          const canteenTimes = empCanteenPunches
-            .map((c) => format(new Date(c.punchTime), "HH:mm"))
-            .join(", ");
-          remarkParts.push(`Canteen: ${canteenTimes}`);
-        }
-
-        rowsToInsert.push({
-          employeeId,
-          workDate: dayUTC,
-          shiftTemplateId: template.id,
-          shiftAssignmentId: assignment.id,
-          sequence: assignment.sequence,
-          actualIn: punchIn?.punchTime ?? null,
-          actualOut: punchOut?.punchTime ?? null,
-          workedMinutes,
-          lateMinutes,
-          earlyExitMinutes,
-          overtimeMinutes,
-          breakMinutes: template.breakMinutes || 60,
-          status,
-          remarks: remarkParts.join(" · ") || "Staff Gate verified",
-        });
       }
     }
 
@@ -419,6 +630,8 @@ export async function syncAttendanceResultsForRange(
     }
 
     for (const [employeeId, empPunches] of unscheduledByEmp.entries()) {
+      if (correctedKeys.has(`${employeeId}|${dateStr}|1`)) continue;
+
       const punchIn = empPunches[0];
       const lastCandidate =
         empPunches.length > 1 ? empPunches[empPunches.length - 1] : null;
@@ -448,7 +661,10 @@ export async function syncAttendanceResultsForRange(
       }
 
       const workedMinutes = punchOut
-        ? Math.max(0, differenceInMinutes(punchOut.punchTime, punchIn.punchTime))
+        ? Math.max(
+            0,
+            differenceInMinutes(punchOut.punchTime, punchIn.punchTime)
+          )
         : isToday
         ? Math.max(0, differenceInMinutes(now, punchIn.punchTime))
         : 0;
