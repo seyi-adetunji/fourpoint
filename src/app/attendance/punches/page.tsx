@@ -1,12 +1,17 @@
 import prisma from "@/lib/prisma";
-import { format, subDays, addDays } from "date-fns";
+import { format, addDays, startOfMonth, endOfMonth } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
 export const dynamic = "force-dynamic";
 import { Search } from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { classifyDevice } from "@/lib/attendanceProcessor";
-import { PunchesClient, type PunchRow } from "@/components/attendance/PunchesClient";
+import { splitEmployeeName } from "@/lib/timesheetExport";
+import {
+  PunchesClient,
+  type PunchRow,
+  type ScopedEmployeeInfo,
+} from "@/components/attendance/PunchesClient";
 
 export default async function AttendancePunchesPage({
   searchParams,
@@ -17,8 +22,10 @@ export default async function AttendancePunchesPage({
   const session = await getServerSession(authOptions);
   const userRole = (session?.user as any)?.role ?? "EMPLOYEE";
   const userDeptId = (session?.user as any)?.departmentId as number | null;
+  const preparedBy = session?.user?.name || "";
   const isDeptScoped = ["HOD", "DEPT_ADMIN", "SUPERVISOR"].includes(userRole);
 
+  const monthStr = params?.month as string | undefined; // e.g. "2026-07"
   const dateStr = params?.date as string | undefined;
   const endDateStr = params?.endDate as string | undefined;
   const query = (params?.q as string | undefined)?.trim() || "";
@@ -28,49 +35,110 @@ export default async function AttendancePunchesPage({
       : undefined
     : (params?.department as string | undefined);
 
-  // Determine date range: if no date param is supplied, default to a 30-day window up to the latest punch
   let startDate: Date;
   let endDate: Date;
 
-  if (dateStr) {
+  if (monthStr && /^\d{4}-\d{2}$/.test(monthStr) && !dateStr) {
+    const firstDay = getUTCMidnight(`${monthStr}-01`);
+    const lastDayLocal = endOfMonth(new Date(`${monthStr}-01T00:00:00`));
+    startDate = firstDay;
+    endDate = getUTCMidnight(format(lastDayLocal, "yyyy-MM-dd"));
+  } else if (dateStr) {
     startDate = getUTCMidnight(dateStr);
     endDate = endDateStr ? getUTCMidnight(endDateStr) : startDate;
   } else {
+    // Default to full calendar month of the latest punch (or current month)
     const latestPunch = await prisma.iclockTransaction.findFirst({
       orderBy: { punchTime: "desc" },
       select: { punchTime: true },
     });
-    const anchor = latestPunch
-      ? getUTCMidnight(latestPunch.punchTime.toISOString().slice(0, 10))
-      : getUTCMidnight();
-    endDate = anchor;
-    startDate = getUTCMidnight(subDays(anchor, 30).toISOString().slice(0, 10));
+    const anchorIso = latestPunch
+      ? latestPunch.punchTime.toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const anchorLocal = new Date(`${anchorIso}T00:00:00`);
+    startDate = getUTCMidnight(format(startOfMonth(anchorLocal), "yyyy-MM-dd"));
+    endDate = getUTCMidnight(format(endOfMonth(anchorLocal), "yyyy-MM-dd"));
   }
 
-  const rangeEndExclusive = addDays(endDate, 1);
+  // If startDate & endDate are in the same calendar month, compute the full month bounds
+  // so that the FT Associate Time Sheet export covers days 1..N of that month accurately.
+  const startIso = startDate.toISOString().slice(0, 10);
+  const endIso = endDate.toISOString().slice(0, 10);
+  const sameMonth = startIso.slice(0, 7) === endIso.slice(0, 7);
 
-  const [departments, rawPunches] = await Promise.all([
-    prisma.department.findMany({ orderBy: { name: "asc" } }),
-    prisma.iclockTransaction.findMany({
-      where: {
-        punchTime: { gte: startDate, lt: rangeEndExclusive },
-      },
-      include: {
-        employee: { include: { department: true } },
-        terminal: true,
-      },
-      orderBy: { punchTime: "desc" },
-      take: 2000,
-    }),
-  ]);
+  const timesheetStartIso = sameMonth
+    ? format(startOfMonth(new Date(`${startIso}T00:00:00`)), "yyyy-MM-dd")
+    : startIso;
+  const timesheetEndIso = sameMonth
+    ? format(endOfMonth(new Date(`${startIso}T00:00:00`)), "yyyy-MM-dd")
+    : endIso;
+
+  const queryStart = getUTCMidnight(
+    timesheetStartIso < startIso ? timesheetStartIso : startIso
+  );
+  const queryEndInclusive = getUTCMidnight(
+    timesheetEndIso > endIso ? timesheetEndIso : endIso
+  );
+  const queryEndExclusive = addDays(queryEndInclusive, 1);
+
+  const [departments, rawPunches, shiftAssignments, deptEmployeesRaw] =
+    await Promise.all([
+      prisma.department.findMany({ orderBy: { name: "asc" } }),
+      prisma.iclockTransaction.findMany({
+        where: {
+          punchTime: { gte: queryStart, lt: queryEndExclusive },
+        },
+        include: {
+          employee: { include: { department: true } },
+          terminal: true,
+        },
+        orderBy: { punchTime: "desc" },
+        take: 50000,
+      }),
+      prisma.shiftAssignment.findMany({
+        where: {
+          workDate: { gte: queryStart, lte: queryEndInclusive },
+          status: { not: "CANCELLED" },
+        },
+        include: {
+          employee: { select: { empCode: true } },
+        },
+      }),
+      deptParam
+        ? prisma.employee.findMany({
+            where: { departmentId: Number(deptParam) },
+            include: { department: true },
+            orderBy: { empCode: "asc" },
+          })
+        : Promise.resolve([]),
+    ]);
+
+  // Build map of scheduled non-cancelled shift counts per (empCode|YYYY-MM-DD)
+  const shiftCountsByEmpDate: Record<string, number> = {};
+  for (const sa of shiftAssignments) {
+    const code = sa.employee?.empCode;
+    if (!code) continue;
+    const dStr = sa.workDate.toISOString().slice(0, 10);
+    const key = `${code}|${dStr}`;
+    shiftCountsByEmpDate[key] = (shiftCountsByEmpDate[key] || 0) + 1;
+  }
 
   // Resolve any punches where empId was null by looking up empCode
   const missingCodes = Array.from(
-    new Set(rawPunches.filter((p) => !p.employee && p.empCode).map((p) => p.empCode))
+    new Set(
+      rawPunches.filter((p) => !p.employee && p.empCode).map((p) => p.empCode)
+    )
   );
   const empByCode = new Map<
     string,
-    { id: number; fullName: string; empCode: string; departmentId: number | null; departmentName: string }
+    {
+      id: number;
+      firstName: string;
+      lastName: string | null;
+      empCode: string;
+      departmentId: number | null;
+      departmentName: string;
+    }
   >();
 
   if (missingCodes.length > 0) {
@@ -81,7 +149,8 @@ export default async function AttendancePunchesPage({
     for (const e of matchedEmps) {
       empByCode.set(e.empCode, {
         id: e.id,
-        fullName: e.fullName,
+        firstName: e.fullName,
+        lastName: e.lastName,
         empCode: e.empCode,
         departmentId: e.departmentId,
         departmentName: e.department?.name || "—",
@@ -89,44 +158,97 @@ export default async function AttendancePunchesPage({
     }
   }
 
-  // Transform and classify into STAFF_GATE vs CANTEEN
-  const allRows: PunchRow[] = [];
-  for (const p of rawPunches) {
-    const fallbackEmp = empByCode.get(p.empCode);
-    const fullName = p.employee?.fullName || fallbackEmp?.fullName || `Staff #${p.empCode}`;
-    const empCode = p.employee?.empCode || p.empCode || "—";
-    const departmentId = p.employee?.departmentId ?? fallbackEmp?.departmentId ?? null;
-    const department =
-      p.employee?.department?.name || fallbackEmp?.departmentName || "—";
+  const transformPunchList = (
+    sourcePunches: typeof rawPunches,
+    minIso: string,
+    maxIso: string
+  ): PunchRow[] => {
+    const out: PunchRow[] = [];
+    for (const p of sourcePunches) {
+      const pDateIso = p.punchTime.toISOString().slice(0, 10);
+      if (pDateIso < minIso || pDateIso > maxIso) continue;
 
-    // Filter by department if specified
-    if (deptParam && departmentId !== Number(deptParam)) {
-      continue;
+      const fallbackEmp = empByCode.get(p.empCode);
+      const firstName = p.employee?.fullName ?? fallbackEmp?.firstName ?? "";
+      const lastName = p.employee?.lastName ?? fallbackEmp?.lastName ?? null;
+      const empCode = p.employee?.empCode || p.empCode || "—";
+      const { surname, givenNames, displayFullName } = firstName
+        ? splitEmployeeName(firstName, lastName)
+        : {
+            surname: `Staff #${empCode}`,
+            givenNames: "",
+            displayFullName: `Staff #${empCode}`,
+          };
+
+      const departmentId =
+        p.employee?.departmentId ?? fallbackEmp?.departmentId ?? null;
+      const department =
+        p.employee?.department?.name || fallbackEmp?.departmentName || "—";
+
+      if (deptParam && departmentId !== Number(deptParam)) {
+        continue;
+      }
+
+      if (
+        query &&
+        !displayFullName.toLowerCase().includes(query.toLowerCase()) &&
+        !firstName.toLowerCase().includes(query.toLowerCase()) &&
+        !empCode.toLowerCase().includes(query.toLowerCase())
+      ) {
+        continue;
+      }
+
+      const dev = classifyDevice(p);
+      out.push({
+        id: p.id,
+        empId: p.empId ?? fallbackEmp?.id ?? null,
+        empCode,
+        fullName: displayFullName,
+        surname,
+        givenNames,
+        department,
+        departmentId,
+        punchTime: p.punchTime.toISOString(),
+        deviceCategory: dev.category,
+        deviceLabel: dev.label,
+        terminalSn: dev.sn,
+      });
     }
+    return out;
+  };
 
-    // Filter by search query if specified
-    if (
-      query &&
-      !fullName.toLowerCase().includes(query.toLowerCase()) &&
-      !empCode.toLowerCase().includes(query.toLowerCase())
-    ) {
-      continue;
-    }
+  const visiblePunches = transformPunchList(rawPunches, startIso, endIso);
+  const timesheetPunches =
+    timesheetStartIso === startIso && timesheetEndIso === endIso
+      ? visiblePunches
+      : transformPunchList(rawPunches, timesheetStartIso, timesheetEndIso);
 
-    const dev = classifyDevice(p);
-    allRows.push({
-      id: p.id,
-      empId: p.empId ?? fallbackEmp?.id ?? null,
-      empCode,
-      fullName,
-      department,
-      departmentId,
-      punchTime: p.punchTime.toISOString(),
-      deviceCategory: dev.category,
-      deviceLabel: dev.label,
-      terminalSn: dev.sn,
+  const scopedEmployees: ScopedEmployeeInfo[] = deptEmployeesRaw
+    .map((e) => {
+      const { surname, givenNames, displayFullName } = splitEmployeeName(
+        e.fullName,
+        e.lastName
+      );
+      return {
+        empCode: e.empCode,
+        fullName: displayFullName,
+        surname,
+        givenNames,
+        department: e.department?.name || "—",
+      };
+    })
+    .filter((e) => {
+      if (!query) return true;
+      return (
+        e.fullName.toLowerCase().includes(query.toLowerCase()) ||
+        e.empCode.toLowerCase().includes(query.toLowerCase())
+      );
     });
-  }
+
+  const selectedDeptObj = deptParam
+    ? departments.find((d) => d.id === Number(deptParam))
+    : undefined;
+  const departmentLabel = selectedDeptObj?.name || "All Departments";
 
   return (
     <div className="page-container animate-fade-in space-y-5">
@@ -134,8 +256,10 @@ export default async function AttendancePunchesPage({
         <div>
           <h1 className="page-title">Attendance Punches</h1>
           <p className="page-subtitle">
-            Separated biometric records for <strong>Staff Gate (Attendance In/Out)</strong> and{" "}
-            <strong>Canteen Device (Meal Tickets)</strong> ({format(startDate, "dd MMM yyyy")}
+            Separated biometric records for{" "}
+            <strong>Staff Gate (Attendance In/Out)</strong> and{" "}
+            <strong>Canteen Device (Meal Tickets)</strong> (
+            {format(startDate, "dd MMM yyyy")}
             {startDate.getTime() !== endDate.getTime()
               ? ` – ${format(endDate, "dd MMM yyyy")}`
               : ""}
@@ -151,14 +275,14 @@ export default async function AttendancePunchesPage({
             <input
               type="date"
               name="date"
-              defaultValue={format(startDate, "yyyy-MM-dd")}
+              defaultValue={startIso}
               className="input max-w-[150px]"
             />
             <span className="text-gray-400 text-xs">to</span>
             <input
               type="date"
               name="endDate"
-              defaultValue={format(endDate, "yyyy-MM-dd")}
+              defaultValue={endIso}
               className="input max-w-[150px]"
             />
           </div>
@@ -198,7 +322,16 @@ export default async function AttendancePunchesPage({
         </form>
       </div>
 
-      <PunchesClient punches={allRows} />
+      <PunchesClient
+        punches={visiblePunches}
+        timesheetPunches={timesheetPunches}
+        timesheetStartDate={timesheetStartIso}
+        timesheetEndDate={timesheetEndIso}
+        shiftCountsByEmpDate={shiftCountsByEmpDate}
+        scopedEmployees={scopedEmployees}
+        departmentLabel={departmentLabel}
+        preparedBy={preparedBy}
+      />
     </div>
   );
 }

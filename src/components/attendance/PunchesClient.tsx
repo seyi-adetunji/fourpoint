@@ -1,24 +1,29 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { format } from "date-fns";
+import { eachDayOfInterval, format } from "date-fns";
 import {
   DoorOpen,
   Utensils,
   Columns,
   Table,
   FileText,
-  Users,
-  Building2,
-  Clock,
-  Fingerprint,
+  Grid3X3,
 } from "lucide-react";
+import {
+  exportTimesheetExcel,
+  exportTimesheetPDF,
+  type TimesheetEmployee,
+  type TimesheetRow,
+} from "@/lib/timesheetExport";
 
 export interface PunchRow {
   id: number;
   empId: number | null;
   empCode: string;
   fullName: string;
+  surname: string;
+  givenNames: string;
   department: string;
   departmentId: number | null;
   punchTime: string; // ISO string
@@ -27,15 +32,169 @@ export interface PunchRow {
   terminalSn: string;
 }
 
-interface PunchesClientProps {
-  punches: PunchRow[];
+export interface ScopedEmployeeInfo {
+  empCode: string;
+  fullName: string;
+  surname: string;
+  givenNames: string;
+  department: string;
 }
 
-export function PunchesClient({ punches }: PunchesClientProps) {
+interface PunchesClientProps {
+  punches: PunchRow[];
+  timesheetPunches: PunchRow[];
+  timesheetStartDate: string; // YYYY-MM-DD
+  timesheetEndDate: string; // YYYY-MM-DD
+  shiftCountsByEmpDate: Record<string, number>;
+  scopedEmployees: ScopedEmployeeInfo[];
+  departmentLabel: string;
+  preparedBy: string;
+}
+
+const DOW_SHORT: Record<number, string> = {
+  0: "Su",
+  1: "M",
+  2: "Tu",
+  3: "W",
+  4: "Th",
+  5: "F",
+  6: "Sa",
+};
+
+/**
+ * Computes FT Associate Time Sheet rows (✓ = 1 shift, ✓✓ = double shift, 0 = off/absent)
+ * for either STAFF_GATE or CANTEEN punches.
+ */
+function buildTimesheetRows(
+  devicePunches: PunchRow[],
+  deviceCategory: "STAFF_GATE" | "CANTEEN",
+  startDateStr: string,
+  endDateStr: string,
+  shiftCountsByEmpDate: Record<string, number>,
+  scopedEmployees: ScopedEmployeeInfo[]
+): TimesheetRow[] {
+  const empMap = new Map<string, TimesheetEmployee>();
+
+  // If a specific department was filtered, include all employees of that department
+  for (const emp of scopedEmployees) {
+    empMap.set(emp.empCode, {
+      empCode: emp.empCode,
+      department: emp.department,
+      surname: emp.surname,
+      givenNames: emp.givenNames,
+      fullName: emp.fullName,
+    });
+  }
+
+  // Group punch timestamps (in ms) per employee per date
+  const punchesByEmpDate = new Map<string, number[]>();
+
+  for (const p of devicePunches) {
+    if (!empMap.has(p.empCode)) {
+      empMap.set(p.empCode, {
+        empCode: p.empCode,
+        department: p.department,
+        surname: p.surname,
+        givenNames: p.givenNames,
+        fullName: p.fullName,
+      });
+    }
+    const dStr = p.punchTime.slice(0, 10);
+    const key = `${p.empCode}|${dStr}`;
+    const arr = punchesByEmpDate.get(key) || [];
+    arr.push(new Date(p.punchTime).getTime());
+    punchesByEmpDate.set(key, arr);
+  }
+
+  const start = new Date(`${startDateStr}T00:00:00`);
+  const end = new Date(`${endDateStr}T00:00:00`);
+  const allDays = eachDayOfInterval({
+    start: start <= end ? start : end,
+    end: end >= start ? end : start,
+  }).map((d) => format(d, "yyyy-MM-dd"));
+
+  const sortedEmployees = Array.from(empMap.values()).sort((a, b) => {
+    if (a.department !== b.department) {
+      return a.department.localeCompare(b.department);
+    }
+    return a.empCode.localeCompare(b.empCode, undefined, { numeric: true });
+  });
+
+  return sortedEmployees.map((employee) => {
+    const days: Record<string, 0 | 1 | 2> = {};
+    let totalShifts = 0;
+
+    for (const dStr of allDays) {
+      const key = `${employee.empCode}|${dStr}`;
+      const times = punchesByEmpDate.get(key);
+
+      if (!times || times.length === 0) {
+        days[dStr] = 0;
+        continue;
+      }
+
+      const sortedTimes = [...times].sort((a, b) => a - b);
+      let shiftVal: 1 | 2 = 1;
+
+      if (deviceCategory === "STAFF_GATE") {
+        const spanMinutes = Math.round(
+          (sortedTimes[sortedTimes.length - 1] - sortedTimes[0]) / 60000
+        );
+        const scheduledShifts = shiftCountsByEmpDate[key] || 0;
+
+        // Double shift if worked >= 13h back-to-back OR scheduled for 2 shifts and worked >= 9h
+        if (
+          spanMinutes >= 780 ||
+          (scheduledShifts >= 2 && spanMinutes >= 540)
+        ) {
+          shiftVal = 2;
+        }
+      } else {
+        // Canteen Device: count distinct meal punches separated by >= 3 hours (180 mins)
+        let distinctMealShifts = 1;
+        let lastClusterTime = sortedTimes[0];
+        for (let i = 1; i < sortedTimes.length; i++) {
+          if (sortedTimes[i] - lastClusterTime >= 180 * 60000) {
+            distinctMealShifts++;
+            lastClusterTime = sortedTimes[i];
+          }
+        }
+        if (distinctMealShifts >= 2) {
+          shiftVal = 2;
+        }
+      }
+
+      days[dStr] = shiftVal;
+      totalShifts += shiftVal;
+    }
+
+    return {
+      employee,
+      days,
+      totalShifts,
+    };
+  });
+}
+
+export function PunchesClient({
+  punches,
+  timesheetPunches,
+  timesheetStartDate,
+  timesheetEndDate,
+  shiftCountsByEmpDate,
+  scopedEmployees,
+  departmentLabel,
+  preparedBy,
+}: PunchesClientProps) {
   const [activeTab, setActiveTab] = useState<"STAFF_GATE" | "CANTEEN" | "SPLIT">(
     "STAFF_GATE"
   );
-  const [gateViewMode, setGateViewMode] = useState<"SUMMARY" | "RAW">("SUMMARY");
+  const [gateViewMode, setGateViewMode] = useState<
+    "SUMMARY" | "TIMESHEET" | "RAW"
+  >("SUMMARY");
+  const [canteenViewMode, setCanteenViewMode] = useState<"RAW" | "TIMESHEET">(
+    "RAW"
+  );
 
   const staffGatePunches = useMemo(
     () => punches.filter((p) => p.deviceCategory === "STAFF_GATE"),
@@ -47,7 +206,72 @@ export function PunchesClient({ punches }: PunchesClientProps) {
     [punches]
   );
 
-  // Group Staff Gate punches by (empCode + date) for a clean First-In / Last-Out summary
+  const tsGatePunches = useMemo(
+    () => timesheetPunches.filter((p) => p.deviceCategory === "STAFF_GATE"),
+    [timesheetPunches]
+  );
+
+  const tsCanteenPunches = useMemo(
+    () => timesheetPunches.filter((p) => p.deviceCategory === "CANTEEN"),
+    [timesheetPunches]
+  );
+
+  const gateTimesheetRows = useMemo(
+    () =>
+      buildTimesheetRows(
+        tsGatePunches,
+        "STAFF_GATE",
+        timesheetStartDate,
+        timesheetEndDate,
+        shiftCountsByEmpDate,
+        scopedEmployees
+      ),
+    [
+      tsGatePunches,
+      timesheetStartDate,
+      timesheetEndDate,
+      shiftCountsByEmpDate,
+      scopedEmployees,
+    ]
+  );
+
+  const canteenTimesheetRows = useMemo(
+    () =>
+      buildTimesheetRows(
+        tsCanteenPunches,
+        "CANTEEN",
+        timesheetStartDate,
+        timesheetEndDate,
+        shiftCountsByEmpDate,
+        scopedEmployees
+      ),
+    [
+      tsCanteenPunches,
+      timesheetStartDate,
+      timesheetEndDate,
+      shiftCountsByEmpDate,
+      scopedEmployees,
+    ]
+  );
+
+  const dateColumns = useMemo(() => {
+    const s = new Date(`${timesheetStartDate}T00:00:00`);
+    const e = new Date(`${timesheetEndDate}T00:00:00`);
+    return eachDayOfInterval({
+      start: s <= e ? s : e,
+      end: e >= s ? e : s,
+    }).map((d) => {
+      const dow = d.getDay();
+      return {
+        dateStr: format(d, "yyyy-MM-dd"),
+        dowLabel: DOW_SHORT[dow] || "",
+        dayNum: d.getDate(),
+        isWeekend: dow === 0 || dow === 6,
+      };
+    });
+  }, [timesheetStartDate, timesheetEndDate]);
+
+  // Group Staff Gate punches by (empCode + date) for First-In / Last-Out summary
   const gateDailySummaries = useMemo(() => {
     const map = new Map<
       string,
@@ -64,7 +288,6 @@ export function PunchesClient({ punches }: PunchesClientProps) {
       }
     >();
 
-    // Sort ascending by time first so firstIn is earliest and lastOut is latest
     const sorted = [...staffGatePunches].sort(
       (a, b) => new Date(a.punchTime).getTime() - new Date(b.punchTime).getTime()
     );
@@ -112,119 +335,215 @@ export function PunchesClient({ punches }: PunchesClientProps) {
     punches.map((p) => p.department).filter((d) => d && d !== "—")
   ).size;
 
-  const exportToExcel = (targetRows: PunchRow[], label: string) => {
-    if (targetRows.length === 0) {
-      alert(`No ${label} punches to export.`);
-      return;
+  const resolveDeptHeader = (rows: TimesheetRow[]) => {
+    if (departmentLabel && departmentLabel !== "All Departments") {
+      return departmentLabel;
     }
-    const headers = [
-      "Date",
-      "Time",
-      "Employee Name",
-      "Staff ID",
-      "Department",
-      "Device",
-      "Terminal SN",
-    ];
-    const csvRows = targetRows.map((p) => [
-      format(new Date(p.punchTime), "yyyy-MM-dd"),
-      format(new Date(p.punchTime), "HH:mm:ss"),
-      p.fullName,
-      p.empCode,
-      p.department,
-      p.deviceLabel,
-      p.terminalSn,
-    ]);
-
-    const csvContent =
-      "\uFEFF" +
-      [
-        headers.map((h) => `"${h}"`).join(","),
-        ...csvRows.map((r) =>
-          r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")
-        ),
-      ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${label.replace(/\s+/g, "_")}_${format(
-      new Date(),
-      "yyyy-MM-dd"
-    )}.csv`;
-    link.click();
+    const uniqueDepts = Array.from(
+      new Set(
+        rows
+          .map((r) => r.employee.department)
+          .filter((d) => d && d !== "—")
+      )
+    );
+    return uniqueDepts.length === 1 ? uniqueDepts[0] : "All Departments";
   };
 
-  const exportToPDF = (targetRows: PunchRow[], title: string) => {
-    if (targetRows.length === 0) {
-      alert(`No punches to export for ${title}.`);
-      return;
-    }
-    const win = window.open("", "_blank", "width=1000,height=800");
-    if (!win) {
-      window.print();
-      return;
-    }
-    const rowsHtml = targetRows
-      .map(
-        (p, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${format(new Date(p.punchTime), "dd MMM yyyy")}</td>
-        <td><strong>${format(new Date(p.punchTime), "HH:mm:ss")}</strong></td>
-        <td><strong>${p.fullName}</strong></td>
-        <td>${p.empCode}</td>
-        <td>${p.department}</td>
-        <td>${p.deviceLabel}</td>
-      </tr>`
-      )
-      .join("");
+  const handleExportExcel = (device: "STAFF_GATE" | "CANTEEN") => {
+    const rows =
+      device === "STAFF_GATE" ? gateTimesheetRows : canteenTimesheetRows;
+    exportTimesheetExcel({
+      departmentLabel: resolveDeptHeader(rows),
+      startDate: timesheetStartDate,
+      endDate: timesheetEndDate,
+      rows,
+      preparedBy,
+      subtitleNote:
+        device === "STAFF_GATE"
+          ? "Staff Gate Attendance"
+          : "Canteen Meal Punches",
+      filePrefix:
+        device === "STAFF_GATE"
+          ? "FT_Time_Sheet_Staff_Gate"
+          : "FT_Time_Sheet_Canteen",
+    });
+  };
 
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1e293b; padding-bottom: 10px; margin-bottom: 16px; }
-            h1 { margin: 0; font-size: 18px; }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; }
-            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
-            th { background: #f1f5f9; text-transform: uppercase; font-size: 10px; }
-            tr:nth-child(even) { background: #f8fafc; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <h1>${title}</h1>
-              <div style="font-size:12px;color:#475569;">WorkforceOps Biometric Report</div>
-            </div>
-            <div style="font-size:12px;text-align:right;color:#475569;">
-              <div><strong>Generated:</strong> ${format(new Date(), "dd MMM yyyy, HH:mm")}</div>
-              <div><strong>Total Punches:</strong> ${targetRows.length}</div>
-            </div>
+  const handleExportPDF = (device: "STAFF_GATE" | "CANTEEN") => {
+    const rows =
+      device === "STAFF_GATE" ? gateTimesheetRows : canteenTimesheetRows;
+    exportTimesheetPDF({
+      departmentLabel: resolveDeptHeader(rows),
+      startDate: timesheetStartDate,
+      endDate: timesheetEndDate,
+      rows,
+      preparedBy,
+      subtitleNote:
+        device === "STAFF_GATE"
+          ? "Staff Gate Attendance"
+          : "Canteen Meal Punches",
+    });
+  };
+
+  const renderTimesheetPreview = (rows: TimesheetRow[], emptyMsg: string) => {
+    if (rows.length === 0) {
+      return (
+        <div className="py-12 text-center text-muted-foreground text-sm">
+          {emptyMsg}
+        </div>
+      );
+    }
+    const grandTotal = rows.reduce((s, r) => s + r.totalShifts, 0);
+
+    return (
+      <div className="p-4 bg-[#dcdcdc]/60 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-white/90 px-4 py-2.5 rounded-xl border border-gray-300 text-xs">
+          <div className="font-bold text-gray-900">
+            Four Points by Sheraton Lagos — FT Associate Time Sheet (
+            <span className="text-red-700">{resolveDeptHeader(rows)}</span>)
           </div>
-          <table>
+          <div className="flex items-center gap-4 font-semibold">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block w-5 text-center bg-[#FFFF00] border border-gray-400 font-bold">
+                ✓
+              </span>{" "}
+              = 1 Shift
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block w-6 text-center bg-[#FFFF00] border border-gray-400 font-bold">
+                ✓✓
+              </span>{" "}
+              = Double Shift
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block w-5 text-center bg-[#BFBFBF] border border-gray-400">
+                0
+              </span>{" "}
+              = Did Not Work
+            </span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto border border-black bg-white shadow-xs">
+          <table className="w-full border-collapse text-[11px]">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Date</th>
-                <th>Punch Time</th>
-                <th>Employee</th>
-                <th>Staff ID</th>
-                <th>Department</th>
-                <th>Device</th>
+                <th
+                  rowSpan={3}
+                  className="bg-[#FFC000] border border-black px-2 py-1 text-center font-bold"
+                >
+                  ID No.
+                </th>
+                <th
+                  rowSpan={3}
+                  className="bg-[#FFC000] border border-black px-2 py-1 text-center font-bold"
+                >
+                  Dept
+                </th>
+                <th
+                  colSpan={2}
+                  rowSpan={2}
+                  className="bg-[#FFC000] border border-black px-2 py-1 text-center font-bold"
+                >
+                  Name
+                </th>
+                <th
+                  colSpan={dateColumns.length}
+                  className="bg-[#FFC000] border border-black px-2 py-1 text-center font-bold text-[#C00000]"
+                >
+                  Shift Attendance Record: ✓ = 1 Shift, ✓✓ = Double Shift,
+                  &quot;0&quot; = Did Not Work
+                </th>
+                <th
+                  rowSpan={2}
+                  className="bg-[#FFC000] border border-black px-2.5 py-1 text-center font-bold"
+                >
+                  Totals
+                </th>
+              </tr>
+              <tr>
+                {dateColumns.map((c) => (
+                  <th
+                    key={`dow-${c.dateStr}`}
+                    className="bg-[#FFC000] border-x border-gray-600 px-1 py-0.5 text-center font-bold text-[10px]"
+                  >
+                    {c.dowLabel}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                <th className="bg-[#FFC000] border border-black px-2 py-1 text-left font-semibold">
+                  Surname
+                </th>
+                <th className="bg-[#FFC000] border border-black px-2 py-1 text-left font-semibold">
+                  Given Names
+                </th>
+                {dateColumns.map((c) => (
+                  <th
+                    key={`num-${c.dateStr}`}
+                    className={`${
+                      c.isWeekend ? "bg-[#BFBFBF]" : "bg-[#FFC000]"
+                    } border border-gray-700 px-1 py-0.5 text-center font-bold text-[10px] min-w-[24px]`}
+                  >
+                    {c.dayNum}
+                  </th>
+                ))}
+                <th className="bg-[#F4B084] border border-black px-2 py-1 text-center font-bold text-[10px] whitespace-nowrap">
+                  Shifts Worked
+                </th>
               </tr>
             </thead>
-            <tbody>${rowsHtml}</tbody>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.employee.empCode}>
+                  <td className="bg-[#92D050] border border-gray-500 px-2 py-1 text-center font-bold">
+                    {row.employee.empCode}
+                  </td>
+                  <td className="bg-white border border-gray-400 px-2 py-1 whitespace-nowrap">
+                    {row.employee.department}
+                  </td>
+                  <td className="bg-white border border-gray-400 px-2 py-1 whitespace-nowrap font-medium">
+                    {row.employee.surname}
+                  </td>
+                  <td className="bg-white border border-gray-400 px-2 py-1 whitespace-nowrap">
+                    {row.employee.givenNames}
+                  </td>
+                  {dateColumns.map((c) => {
+                    const val = row.days[c.dateStr] ?? 0;
+                    return (
+                      <td
+                        key={`${row.employee.empCode}-${c.dateStr}`}
+                        className={`border border-gray-400 px-1 py-1 text-center ${
+                          val > 0
+                            ? "bg-[#FFFF00] font-bold text-black"
+                            : "bg-[#BFBFBF] text-gray-800"
+                        }`}
+                      >
+                        {val === 2 ? "✓✓" : val === 1 ? "✓" : "0"}
+                      </td>
+                    );
+                  })}
+                  <td className="bg-[#F8CBAD] border border-black px-2 py-1 text-center font-bold">
+                    {row.totalShifts}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td
+                  colSpan={4 + dateColumns.length}
+                  className="bg-gray-100 border-t border-black px-3 py-1.5 text-right font-bold text-xs"
+                >
+                  Grand Total Shifts:
+                </td>
+                <td className="bg-[#FFC000] border-2 border-black px-2 py-1.5 text-center font-extrabold text-sm">
+                  {grandTotal}
+                </td>
+              </tr>
+            </tbody>
           </table>
-          <script>window.onload = function() { window.print(); };</script>
-        </body>
-      </html>
-    `);
-    win.document.close();
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -370,7 +689,19 @@ export function PunchesClient({ punches }: PunchesClientProps) {
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  Daily In/Out Summary ({gateDailySummaries.length})
+                  Daily In/Out ({gateDailySummaries.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGateViewMode("TIMESHEET")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
+                    gateViewMode === "TIMESHEET"
+                      ? "bg-amber-100 text-amber-900"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <Grid3X3 className="w-3.5 h-3.5" />
+                  Time Sheet (✓ / ✓✓ / 0)
                 </button>
                 <button
                   type="button"
@@ -386,27 +717,50 @@ export function PunchesClient({ punches }: PunchesClientProps) {
               </div>
             )}
 
+            {activeTab === "CANTEEN" && (
+              <div className="inline-flex rounded-lg border border-border bg-white p-0.5 mr-2">
+                <button
+                  type="button"
+                  onClick={() => setCanteenViewMode("RAW")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+                    canteenViewMode === "RAW"
+                      ? "bg-amber-50 text-amber-800"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Meal Log ({canteenPunches.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCanteenViewMode("TIMESHEET")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
+                    canteenViewMode === "TIMESHEET"
+                      ? "bg-amber-100 text-amber-900"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <Grid3X3 className="w-3.5 h-3.5" />
+                  Time Sheet (✓ / ✓✓ / 0)
+                </button>
+              </div>
+            )}
+
             {activeTab !== "CANTEEN" && (
               <>
                 <button
                   type="button"
-                  onClick={() =>
-                    exportToExcel(staffGatePunches, "Staff_Gate_Punches")
-                  }
+                  onClick={() => handleExportExcel("STAFF_GATE")}
                   className="btn-outline btn-sm text-xs flex items-center gap-1.5"
+                  title="Download Four Points FT Associate Time Sheet (.xls)"
                 >
                   <Table className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Staff Gate Excel</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    exportToPDF(
-                      staffGatePunches,
-                      "Staff Gate — Biometric Attendance Punches"
-                    )
-                  }
+                  onClick={() => handleExportPDF("STAFF_GATE")}
                   className="btn-outline btn-sm text-xs flex items-center gap-1.5"
+                  title="Print / Save Four Points FT Associate Time Sheet as PDF"
                 >
                   <FileText className="w-3.5 h-3.5 text-red-600" />
                   <span>Staff Gate PDF</span>
@@ -418,23 +772,18 @@ export function PunchesClient({ punches }: PunchesClientProps) {
               <>
                 <button
                   type="button"
-                  onClick={() =>
-                    exportToExcel(canteenPunches, "Canteen_Device_Punches")
-                  }
+                  onClick={() => handleExportExcel("CANTEEN")}
                   className="btn-outline btn-sm text-xs flex items-center gap-1.5"
+                  title="Download Four Points FT Associate Time Sheet (.xls)"
                 >
                   <Table className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Canteen Excel</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    exportToPDF(
-                      canteenPunches,
-                      "Canteen Device — Meal Ticket Biometric Log"
-                    )
-                  }
+                  onClick={() => handleExportPDF("CANTEEN")}
                   className="btn-outline btn-sm text-xs flex items-center gap-1.5"
+                  title="Print / Save Four Points FT Associate Time Sheet as PDF"
                 >
                   <FileText className="w-3.5 h-3.5 text-red-600" />
                   <span>Canteen PDF</span>
@@ -447,7 +796,12 @@ export function PunchesClient({ punches }: PunchesClientProps) {
         {/* TAB 1: STAFF GATE ONLY */}
         {activeTab === "STAFF_GATE" && (
           <div className="overflow-x-auto">
-            {staffGatePunches.length === 0 ? (
+            {gateViewMode === "TIMESHEET" ? (
+              renderTimesheetPreview(
+                gateTimesheetRows,
+                "No Staff Gate records found for the selected filter."
+              )
+            ) : staffGatePunches.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground text-sm">
                 No <strong>Staff Gate</strong> punches found for the selected filter.
               </div>
@@ -562,7 +916,12 @@ export function PunchesClient({ punches }: PunchesClientProps) {
         {/* TAB 2: CANTEEN DEVICE ONLY */}
         {activeTab === "CANTEEN" && (
           <div className="overflow-x-auto">
-            {canteenPunches.length === 0 ? (
+            {canteenViewMode === "TIMESHEET" ? (
+              renderTimesheetPreview(
+                canteenTimesheetRows,
+                "No Canteen Device records found for the selected filter."
+              )
+            ) : canteenPunches.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground text-sm">
                 No <strong>Canteen Device</strong> meal punches found for the selected filter.
               </div>
