@@ -10,13 +10,14 @@ export interface TimesheetEmployee {
 
 export interface TimesheetDayCell {
   dateStr: string; // YYYY-MM-DD
-  shifts: 0 | 1 | 2; // 0 = "0", 1 = "✓", 2 = "✓✓"
+  shifts: 0 | 1 | 2; // 0 = "0" (0 hrs), 1 = "✓" (8 hrs), 2 = "✓✓" (16 hrs)
 }
 
 export interface TimesheetRow {
   employee: TimesheetEmployee;
   days: Record<string, 0 | 1 | 2>; // dateStr -> 0 | 1 | 2
   totalShifts: number;
+  totalHours: number; // ✓ = 8 hrs, ✓✓ = 16 hrs
 }
 
 export interface TimesheetExportOptions {
@@ -117,7 +118,8 @@ function getMonthAndYearLabels(startDateStr: string, endDateStr: string) {
 /**
  * Generates an Excel (.xls) workbook styled identically to the
  * Four Points by Sheraton Lagos "FT Associate Time Sheet" template,
- * using ✓ for 1 shift, ✓✓ for double shift, and 0 for absent/off.
+ * using ✓ = 1 shift (8 hours), ✓✓ = double shift (16 hours), and 0 = 0 hours,
+ * with per-employee Total Shifts & Total Hours columns.
  */
 export function exportTimesheetExcel(opts: TimesheetExportOptions) {
   if (opts.rows.length === 0) {
@@ -130,10 +132,11 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
     opts.startDate,
     opts.endDate
   );
-  const grandTotal = opts.rows.reduce((sum, r) => sum + r.totalShifts, 0);
+  const grandTotalShifts = opts.rows.reduce((sum, r) => sum + r.totalShifts, 0);
+  const grandTotalHours = opts.rows.reduce((sum, r) => sum + r.totalHours, 0);
   const totalDayCols = dateCols.length;
-  // Total columns in sheet: [Row#] [ID No.] [Dept] [Surname] [Given Names] [...days] [Totals]
-  const rightMetaStartSpan = Math.max(2, totalDayCols - 4);
+  // Total columns in sheet: [Row#] [ID No.] [Dept] [Surname] [Given Names] [...days] [Shifts Worked] [Hours Worked]
+  const rightMetaStartSpan = Math.max(2, totalDayCols - 3);
 
   const dowHeadersHtml = dateCols
     .map(
@@ -184,8 +187,11 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
             row.employee.givenNames
           )}</td>
           ${cellsHtml}
-          <td style="background:#F8CBAD;text-align:center;font-weight:bold;border-left:1pt solid #000;border-right:1pt solid #000;border-top:0.5pt solid #7F7F7F;border-bottom:0.5pt solid #7F7F7F;">${
+          <td style="background:#FCE4D6;text-align:center;font-weight:bold;border-left:1pt solid #000;border-right:0.5pt solid #7F7F7F;border-top:0.5pt solid #7F7F7F;border-bottom:0.5pt solid #7F7F7F;">${
             row.totalShifts
+          }</td>
+          <td style="background:#F8CBAD;text-align:center;font-weight:bold;border-left:0.5pt solid #7F7F7F;border-right:1pt solid #000;border-top:0.5pt solid #7F7F7F;border-bottom:0.5pt solid #7F7F7F;">${
+            row.totalHours
           }</td>
         </tr>`;
     })
@@ -231,14 +237,14 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
         <div style="font-size:7pt;letter-spacing:1.5px;color:#555;">BY SHERATON</div>
         <div style="font-size:7.5pt;font-weight:bold;color:#222;margin-top:3px;">Lagos</div>
       </td>
-      <td colspan="${2 + totalDayCols + 1}" style="font-size:18pt;font-weight:bold;color:#000000;padding-left:8px;">
+      <td colspan="${2 + totalDayCols + 2}" style="font-size:18pt;font-weight:bold;color:#000000;padding-left:8px;">
         Four Points by Sheraton Lagos
       </td>
     </tr>
     <!-- Title Row 2 -->
     <tr style="height:22pt;">
       <td></td>
-      <td colspan="${2 + totalDayCols + 1}" style="font-size:15pt;font-weight:bold;color:#000000;padding-left:8px;">
+      <td colspan="${2 + totalDayCols + 2}" style="font-size:15pt;font-weight:bold;color:#000000;padding-left:8px;">
         FT Associate Time Sheet${opts.subtitleNote ? ` (${escapeHtml(opts.subtitleNote)})` : ""}
       </td>
     </tr>
@@ -267,7 +273,7 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
       <td></td>
     </tr>
     <!-- Blank Spacer Row -->
-    <tr style="height:10pt;"><td colspan="${6 + totalDayCols}"></td></tr>
+    <tr style="height:10pt;"><td colspan="${7 + totalDayCols}"></td></tr>
 
     <!-- Table Header Row 1 -->
     <tr style="height:18pt;">
@@ -276,9 +282,9 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
       <td rowspan="3" style="background:#FFC000;font-weight:bold;text-align:center;vertical-align:middle;border:1pt solid #000000;width:85pt;">Dept</td>
       <td colspan="2" rowspan="2" style="background:#FFC000;font-weight:bold;text-align:center;vertical-align:bottom;border-top:1pt solid #000000;border-left:1pt solid #000000;border-right:1pt solid #000000;">Name</td>
       <td colspan="${totalDayCols}" style="background:#FFC000;color:#C00000;font-weight:bold;font-size:9pt;text-align:center;border-top:1pt solid #000000;border-left:1pt solid #000000;border-right:1pt solid #000000;">
-        Shift Attendance Record: &#10003; = 1 Shift, &#10003;&#10003; = Double Shift, &quot;0&quot; = Did Not Work
+        Shift Attendance Record: &#10003; = 8 Hours (1 Shift), &#10003;&#10003; = 16 Hours (Double Shift), &quot;0&quot; = 0 Hours
       </td>
-      <td rowspan="2" style="background:#FFC000;font-weight:bold;font-size:11pt;text-align:center;vertical-align:middle;border-top:1pt solid #000000;border-left:1pt solid #000000;border-right:1pt solid #000000;width:72pt;">Totals</td>
+      <td colspan="2" rowspan="2" style="background:#FFC000;font-weight:bold;font-size:11pt;text-align:center;vertical-align:middle;border-top:1pt solid #000000;border-left:1pt solid #000000;border-right:1pt solid #000000;">Totals</td>
     </tr>
 
     <!-- Table Header Row 2: Day of Week -->
@@ -287,13 +293,14 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
       ${dowHeadersHtml}
     </tr>
 
-    <!-- Table Header Row 3: Surname / Given Names / Day Numbers / Shifts Worked -->
+    <!-- Table Header Row 3: Surname / Given Names / Day Numbers / Shifts Worked / Hours Worked -->
     <tr style="height:16pt;">
       <td></td>
       <td style="background:#FFC000;font-size:9pt;text-align:center;border-bottom:1pt solid #000000;border-left:1pt solid #000000;width:95pt;">Surname</td>
       <td style="background:#FFC000;font-size:9pt;text-align:center;border-bottom:1pt solid #000000;border-right:1pt solid #000000;width:110pt;">Given Names</td>
       ${dayNumHeadersHtml}
-      <td style="background:#F4B084;font-weight:bold;font-size:8.5pt;text-align:center;border:1pt solid #000000;">Shifts Worked</td>
+      <td style="background:#F4B084;font-weight:bold;font-size:8.5pt;text-align:center;border:1pt solid #000000;width:58pt;">Total Shifts</td>
+      <td style="background:#ED7D31;color:#000000;font-weight:bold;font-size:8.5pt;text-align:center;border:1pt solid #000000;width:68pt;">Hours Worked</td>
     </tr>
 
     <!-- Employee Data Rows -->
@@ -303,17 +310,20 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
     <tr style="height:22pt;">
       <td colspan="${5 + totalDayCols}"></td>
       <td style="background:#FFC000;font-size:12pt;font-weight:bold;text-align:center;border:1pt solid #000000;">
-        ${grandTotal}
+        ${grandTotalShifts}
+      </td>
+      <td style="background:#FFC000;font-size:12pt;font-weight:bold;text-align:center;border:1pt solid #000000;">
+        ${grandTotalHours}
       </td>
     </tr>
 
     <!-- Human Resources Label -->
     <tr style="height:18pt;">
-      <td colspan="${Math.max(5, Math.floor((5 + totalDayCols) * 0.6))}"></td>
+      <td colspan="${Math.max(5, Math.floor((6 + totalDayCols) * 0.6))}"></td>
       <td colspan="6" style="font-size:9.5pt;color:#000000;">Human Resources:</td>
     </tr>
 
-    <tr style="height:28pt;"><td colspan="${6 + totalDayCols}"></td></tr>
+    <tr style="height:28pt;"><td colspan="${7 + totalDayCols}"></td></tr>
 
     <!-- Signature Row 1 (Names / Lines) -->
     <tr style="height:18pt;">
@@ -348,7 +358,8 @@ export function exportTimesheetExcel(opts: TimesheetExportOptions) {
 
 /**
  * Opens a print-ready Landscape PDF view styled identically to the
- * Four Points by Sheraton Lagos "FT Associate Time Sheet" template.
+ * Four Points by Sheraton Lagos "FT Associate Time Sheet" template,
+ * with ✓ = 8 hrs, ✓✓ = 16 hrs, 0 = 0 hrs, and Total Shifts + Hours Worked columns.
  */
 export function exportTimesheetPDF(opts: TimesheetExportOptions) {
   if (opts.rows.length === 0) {
@@ -367,7 +378,8 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
     opts.startDate,
     opts.endDate
   );
-  const grandTotal = opts.rows.reduce((sum, r) => sum + r.totalShifts, 0);
+  const grandTotalShifts = opts.rows.reduce((sum, r) => sum + r.totalShifts, 0);
+  const grandTotalHours = opts.rows.reduce((sum, r) => sum + r.totalHours, 0);
 
   const dowHeadersHtml = dateCols
     .map((c) => `<th class="dow-cell">${c.dowLabel}</th>`)
@@ -405,7 +417,8 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
           <td class="text-cell">${escapeHtml(row.employee.surname)}</td>
           <td class="text-cell">${escapeHtml(row.employee.givenNames)}</td>
           ${dayCells}
-          <td class="total-cell">${row.totalShifts}</td>
+          <td class="total-shifts-cell">${row.totalShifts}</td>
+          <td class="total-cell">${row.totalHours}</td>
         </tr>`;
     })
     .join("");
@@ -420,7 +433,7 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
   <style>
     @page {
       size: A4 landscape;
-      margin: 8mm;
+      margin: 7mm;
     }
     * {
       box-sizing: border-box;
@@ -557,7 +570,7 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
     table.timesheet {
       width: 100%;
       border-collapse: collapse;
-      font-size: 9.5px;
+      font-size: 9px;
     }
     table.timesheet th,
     table.timesheet td {
@@ -573,7 +586,7 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
       background: #ffc000;
       color: #c00000;
       font-weight: 700;
-      font-size: 9.5px;
+      font-size: 9px;
       text-align: center;
       border-top: 1px solid #000;
       border-left: 1px solid #000;
@@ -582,32 +595,40 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
     .dow-cell {
       background: #ffc000;
       font-weight: 700;
-      font-size: 8.5px;
+      font-size: 8px;
       text-align: center;
-      min-width: 18px;
+      min-width: 17px;
     }
     .day-num-cell {
       background: #ffc000;
       font-weight: 700;
-      font-size: 8.5px;
+      font-size: 8px;
       text-align: center;
       border-bottom: 1px solid #000;
     }
     .day-num-cell.weekend-hdr {
       background: #bfbfbf;
     }
-    .hdr-shifts-worked {
+    .hdr-shifts-sub {
       background: #f4b084;
       border: 1px solid #000;
       font-weight: 700;
-      font-size: 8.5px;
+      font-size: 8px;
       text-align: center;
-      width: 68px;
+      width: 48px;
+    }
+    .hdr-hours-sub {
+      background: #ed7d31;
+      border: 1px solid #000;
+      font-weight: 700;
+      font-size: 8px;
+      text-align: center;
+      width: 58px;
     }
     .row-idx {
-      width: 22px;
+      width: 20px;
       text-align: center;
-      font-size: 9px;
+      font-size: 8.5px;
       color: #111;
       border: none;
     }
@@ -617,20 +638,20 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
       border-left: 1px solid #000;
       text-align: center;
       font-weight: 600;
-      width: 48px;
+      width: 44px;
     }
     .text-cell {
       background: #ffffff;
       border: 0.5px solid #7f7f7f;
       text-align: left;
-      padding-left: 5px !important;
+      padding-left: 4px !important;
       white-space: nowrap;
     }
     .shift-cell {
       border: 0.5px solid #7f7f7f;
       text-align: center;
-      font-size: 9px;
-      min-width: 18px;
+      font-size: 8.5px;
+      min-width: 17px;
     }
     .shift-cell.worked {
       background: #ffff00;
@@ -646,21 +667,30 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
       background: #bfbfbf;
       color: #000;
     }
+    .total-shifts-cell {
+      background: #fce4d6;
+      border-top: 0.5px solid #7f7f7f;
+      border-bottom: 0.5px solid #7f7f7f;
+      border-left: 1px solid #000;
+      border-right: 0.5px solid #7f7f7f;
+      text-align: center;
+      font-weight: 700;
+    }
     .total-cell {
       background: #f8cbad;
       border-top: 0.5px solid #7f7f7f;
       border-bottom: 0.5px solid #7f7f7f;
-      border-left: 1px solid #000;
+      border-left: 0.5px solid #7f7f7f;
       border-right: 1px solid #000;
       text-align: center;
-      font-weight: 700;
+      font-weight: 800;
     }
     .grand-total-cell {
       background: #ffc000;
       border: 1.5px solid #000;
       text-align: center;
       font-weight: 800;
-      font-size: 13px;
+      font-size: 12px;
       padding: 4px !important;
     }
     .footer-hr {
@@ -757,12 +787,12 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
         <tr>
           <th class="row-idx"></th>
           <th rowspan="3" class="hdr-yellow">ID No.</th>
-          <th rowspan="3" class="hdr-yellow" style="width:76px;">Dept</th>
+          <th rowspan="3" class="hdr-yellow" style="width:72px;">Dept</th>
           <th colspan="2" rowspan="2" class="hdr-yellow" style="border-bottom:none;">Name</th>
           <th colspan="${dateCols.length}" class="hdr-instruction">
-            Shift Attendance Record: &#10003; = 1 Shift, &#10003;&#10003; = Double Shift, &quot;0&quot; = Did Not Work
+            Shift Attendance Record: &#10003; = 8 Hours (1 Shift), &#10003;&#10003; = 16 Hours (Double Shift), &quot;0&quot; = 0 Hours
           </th>
-          <th rowspan="2" class="hdr-yellow" style="font-size:11px;">Totals</th>
+          <th colspan="2" rowspan="2" class="hdr-yellow" style="font-size:11px;">Totals</th>
         </tr>
         <tr>
           <th class="row-idx"></th>
@@ -770,17 +800,19 @@ export function exportTimesheetPDF(opts: TimesheetExportOptions) {
         </tr>
         <tr>
           <th class="row-idx"></th>
-          <th class="hdr-yellow" style="border-top:none;font-weight:600;width:88px;">Surname</th>
-          <th class="hdr-yellow" style="border-top:none;font-weight:600;width:105px;">Given Names</th>
+          <th class="hdr-yellow" style="border-top:none;font-weight:600;width:82px;">Surname</th>
+          <th class="hdr-yellow" style="border-top:none;font-weight:600;width:98px;">Given Names</th>
           ${dayNumHeadersHtml}
-          <th class="hdr-shifts-worked">Shifts Worked</th>
+          <th class="hdr-shifts-sub">Total Shifts</th>
+          <th class="hdr-hours-sub">Hours Worked</th>
         </tr>
       </thead>
       <tbody>
         ${rowsHtml}
         <tr>
           <td colspan="${5 + dateCols.length}" style="border:none;"></td>
-          <td class="grand-total-cell">${grandTotal}</td>
+          <td class="grand-total-cell">${grandTotalShifts}</td>
+          <td class="grand-total-cell">${grandTotalHours}</td>
         </tr>
       </tbody>
     </table>

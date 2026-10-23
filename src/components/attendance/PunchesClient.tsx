@@ -172,6 +172,7 @@ function buildTimesheetRows(
       employee,
       days,
       totalShifts,
+      totalHours: totalShifts * 8,
     };
   });
 }
@@ -393,7 +394,8 @@ export function PunchesClient({
         </div>
       );
     }
-    const grandTotal = rows.reduce((s, r) => s + r.totalShifts, 0);
+    const grandTotalShifts = rows.reduce((s, r) => s + r.totalShifts, 0);
+    const grandTotalHours = rows.reduce((s, r) => s + r.totalHours, 0);
 
     return (
       <div className="p-4 bg-[#dcdcdc]/60 space-y-3">
@@ -407,19 +409,19 @@ export function PunchesClient({
               <span className="inline-block w-5 text-center bg-[#FFFF00] border border-gray-400 font-bold">
                 ✓
               </span>{" "}
-              = 1 Shift
+              = 8 Hours (1 Shift)
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="inline-block w-6 text-center bg-[#FFFF00] border border-gray-400 font-bold">
                 ✓✓
               </span>{" "}
-              = Double Shift
+              = 16 Hours (Double Shift)
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="inline-block w-5 text-center bg-[#BFBFBF] border border-gray-400">
                 0
               </span>{" "}
-              = Did Not Work
+              = 0 Hours
             </span>
           </div>
         </div>
@@ -451,10 +453,11 @@ export function PunchesClient({
                   colSpan={dateColumns.length}
                   className="bg-[#FFC000] border border-black px-2 py-1 text-center font-bold text-[#C00000]"
                 >
-                  Shift Attendance Record: ✓ = 1 Shift, ✓✓ = Double Shift,
-                  &quot;0&quot; = Did Not Work
+                  Shift Attendance Record: ✓ = 8 Hours (1 Shift), ✓✓ = 16 Hours
+                  (Double Shift), &quot;0&quot; = 0 Hours
                 </th>
                 <th
+                  colSpan={2}
                   rowSpan={2}
                   className="bg-[#FFC000] border border-black px-2.5 py-1 text-center font-bold"
                 >
@@ -489,7 +492,10 @@ export function PunchesClient({
                   </th>
                 ))}
                 <th className="bg-[#F4B084] border border-black px-2 py-1 text-center font-bold text-[10px] whitespace-nowrap">
-                  Shifts Worked
+                  Total Shifts
+                </th>
+                <th className="bg-[#ED7D31] border border-black px-2 py-1 text-center font-bold text-[10px] whitespace-nowrap">
+                  Hours Worked
                 </th>
               </tr>
             </thead>
@@ -523,8 +529,11 @@ export function PunchesClient({
                       </td>
                     );
                   })}
-                  <td className="bg-[#F8CBAD] border border-black px-2 py-1 text-center font-bold">
+                  <td className="bg-[#FCE4D6] border border-black px-2 py-1 text-center font-bold">
                     {row.totalShifts}
+                  </td>
+                  <td className="bg-[#F8CBAD] border border-black px-2 py-1 text-center font-extrabold">
+                    {row.totalHours}
                   </td>
                 </tr>
               ))}
@@ -533,10 +542,13 @@ export function PunchesClient({
                   colSpan={4 + dateColumns.length}
                   className="bg-gray-100 border-t border-black px-3 py-1.5 text-right font-bold text-xs"
                 >
-                  Grand Total Shifts:
+                  Grand Totals:
                 </td>
                 <td className="bg-[#FFC000] border-2 border-black px-2 py-1.5 text-center font-extrabold text-sm">
-                  {grandTotal}
+                  {grandTotalShifts}
+                </td>
+                <td className="bg-[#FFC000] border-2 border-black px-2 py-1.5 text-center font-extrabold text-sm">
+                  {grandTotalHours}
                 </td>
               </tr>
             </tbody>
