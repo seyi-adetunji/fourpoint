@@ -4,6 +4,7 @@ import { Settings, Shield, Clock } from "lucide-react";
 import ManageShiftTemplates from "@/components/ManageShiftTemplates";
 import ManageDepartments from "@/components/ManageDepartments";
 import SystemUpdateManager from "@/components/admin/SystemUpdateManager";
+import DepartmentMergeManager from "@/components/admin/DepartmentMergeManager";
 
 export default async function SettingsPage() {
   const [templates, departments] = await Promise.all([
@@ -12,6 +13,11 @@ export default async function SettingsPage() {
     }),
     prisma.department.findMany({
       orderBy: { name: "asc" },
+      include: {
+        _count: {
+          select: { employees: true },
+        },
+      },
     }),
   ]);
 
@@ -52,6 +58,9 @@ export default async function SettingsPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* GitHub Auto-Update & Sync Diagnostics */}
           <SystemUpdateManager />
+
+          {/* Duplicate Department Consolidation */}
+          <DepartmentMergeManager />
 
           {/* Shift Templates Management Area */}
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
