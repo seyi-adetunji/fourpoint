@@ -99,7 +99,7 @@ function buildTimesheetRows(
         fullName: p.fullName,
       });
     }
-    const dStr = p.punchTime.slice(0, 10);
+    const dStr = format(new Date(p.punchTime), "yyyy-MM-dd");
     const key = `${p.empCode}|${dStr}`;
     const arr = punchesByEmpDate.get(key) || [];
     arr.push(new Date(p.punchTime).getTime());
@@ -293,7 +293,7 @@ export function PunchesClient({
     );
 
     for (const p of sorted) {
-      const dateStr = p.punchTime.slice(0, 10);
+      const dateStr = format(new Date(p.punchTime), "yyyy-MM-dd");
       const key = `${p.empCode}|${dateStr}`;
       const timeStr = format(new Date(p.punchTime), "HH:mm:ss");
       if (!map.has(key)) {
@@ -823,7 +823,7 @@ export function PunchesClient({
                   {gateDailySummaries.map((s) => (
                     <tr key={s.key} className="hover:bg-gray-50/50">
                       <td className="px-5 py-3.5 font-medium whitespace-nowrap text-gray-700">
-                        {format(new Date(s.dateStr), "EEE, dd MMM yyyy")}
+                        {format(new Date(`${s.dateStr}T00:00:00`), "EEE, dd MMM yyyy")}
                       </td>
                       <td className="px-5 py-3.5 font-semibold text-gray-900">
                         {s.fullName}

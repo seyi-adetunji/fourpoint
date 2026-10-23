@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { format, addDays, startOfMonth, endOfMonth } from "date-fns";
+import { format, addDays, subDays, startOfMonth, endOfMonth } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
 export const dynamic = "force-dynamic";
 import { Search } from "lucide-react";
@@ -38,6 +38,8 @@ export default async function AttendancePunchesPage({
   let startDate: Date;
   let endDate: Date;
 
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+
   if (monthStr && /^\d{4}-\d{2}$/.test(monthStr) && !dateStr) {
     const firstDay = getUTCMidnight(`${monthStr}-01`);
     const lastDayLocal = endOfMonth(new Date(`${monthStr}-01T00:00:00`));
@@ -47,23 +49,16 @@ export default async function AttendancePunchesPage({
     startDate = getUTCMidnight(dateStr);
     endDate = endDateStr ? getUTCMidnight(endDateStr) : startDate;
   } else {
-    // Default to full calendar month of the latest punch (or current month)
-    const latestPunch = await prisma.iclockTransaction.findFirst({
-      orderBy: { punchTime: "desc" },
-      select: { punchTime: true },
-    });
-    const anchorIso = latestPunch
-      ? latestPunch.punchTime.toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
-    const anchorLocal = new Date(`${anchorIso}T00:00:00`);
-    startDate = getUTCMidnight(format(startOfMonth(anchorLocal), "yyyy-MM-dd"));
-    endDate = getUTCMidnight(format(endOfMonth(anchorLocal), "yyyy-MM-dd"));
+    // Always default to the current day so both KPI cards and punch lists show today's records
+    startDate = getUTCMidnight(todayIso);
+    endDate = getUTCMidnight(todayIso);
   }
 
   // If startDate & endDate are in the same calendar month, compute the full month bounds
   // so that the FT Associate Time Sheet export covers days 1..N of that month accurately.
   const startIso = startDate.toISOString().slice(0, 10);
   const endIso = endDate.toISOString().slice(0, 10);
+  const isShowingToday = startIso === todayIso && endIso === todayIso;
   const sameMonth = startIso.slice(0, 7) === endIso.slice(0, 7);
 
   const timesheetStartIso = sameMonth
@@ -73,13 +68,14 @@ export default async function AttendancePunchesPage({
     ? format(endOfMonth(new Date(`${startIso}T00:00:00`)), "yyyy-MM-dd")
     : endIso;
 
-  const queryStart = getUTCMidnight(
-    timesheetStartIso < startIso ? timesheetStartIso : startIso
+  const queryStart = subDays(
+    getUTCMidnight(timesheetStartIso < startIso ? timesheetStartIso : startIso),
+    1
   );
   const queryEndInclusive = getUTCMidnight(
     timesheetEndIso > endIso ? timesheetEndIso : endIso
   );
-  const queryEndExclusive = addDays(queryEndInclusive, 1);
+  const queryEndExclusive = addDays(queryEndInclusive, 2);
 
   const [departments, rawPunches, shiftAssignments, deptEmployeesRaw] =
     await Promise.all([
@@ -165,7 +161,7 @@ export default async function AttendancePunchesPage({
   ): PunchRow[] => {
     const out: PunchRow[] = [];
     for (const p of sourcePunches) {
-      const pDateIso = p.punchTime.toISOString().slice(0, 10);
+      const pDateIso = format(new Date(p.punchTime), "yyyy-MM-dd");
       if (pDateIso < minIso || pDateIso > maxIso) continue;
 
       const fallbackEmp = empByCode.get(p.empCode);
@@ -258,12 +254,17 @@ export default async function AttendancePunchesPage({
           <p className="page-subtitle">
             Separated biometric records for{" "}
             <strong>Staff Gate (Attendance In/Out)</strong> and{" "}
-            <strong>Canteen Device (Meal Tickets)</strong> (
-            {format(startDate, "dd MMM yyyy")}
-            {startDate.getTime() !== endDate.getTime()
-              ? ` – ${format(endDate, "dd MMM yyyy")}`
-              : ""}
-            )
+            <strong>Canteen Device (Meal Tickets)</strong> —{" "}
+            <span className="font-semibold text-primary">
+              {isShowingToday
+                ? `Today (${format(new Date(`${startIso}T00:00:00`), "EEE, dd MMM yyyy")})`
+                : startIso === endIso
+                ? format(new Date(`${startIso}T00:00:00`), "EEE, dd MMM yyyy")
+                : `${format(new Date(`${startIso}T00:00:00`), "dd MMM yyyy")} – ${format(
+                    new Date(`${endIso}T00:00:00`),
+                    "dd MMM yyyy"
+                  )}`}
+            </span>
           </p>
         </div>
       </div>
