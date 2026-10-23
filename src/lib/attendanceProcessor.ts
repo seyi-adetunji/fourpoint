@@ -1,5 +1,13 @@
 import prisma from "@/lib/prisma";
-import { addDays, addMinutes, differenceInMinutes, isAfter, isBefore } from "date-fns";
+import {
+  addDays,
+  addMinutes,
+  differenceInMinutes,
+  format,
+  isAfter,
+  isBefore,
+  subDays,
+} from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
 
 export type DeviceCategory = "STAFF_GATE" | "CANTEEN";
@@ -59,32 +67,47 @@ export function classifyDevice(punch: {
 }
 
 /**
- * Synchronizes / computes `AttendanceResult` rows for a given UTC date range
+ * Synchronizes / computes `AttendanceResult` rows for a given date range
  * using:
  *   1. Scheduled `ShiftAssignment` records (in `workforce.ShiftAssignment`)
  *   2. Biometric punches from `public.iclock_transaction` (separating Staff Gate vs Canteen)
  *
- * Also creates unscheduled `AttendanceResult` rows for employees who clocked in
- * at the Staff Gate without a shift assignment on that date, so Attendance Results
- * always reflects everyone who worked or was scheduled.
+ * Properly handles:
+ *   - Local hotel timezone (WAT / server local time) when comparing shift start/end times
+ *   - Active ongoing shifts today (employees who clocked IN today and haven't clocked OUT yet
+ *     are marked PRESENT or LATE rather than MISSING_PUNCH)
+ *   - Lateness calculation on arrival (`punchIn`) even before clock-out
+ *   - Unscheduled Staff Gate punches matched against Morning / Afternoon templates
  */
-export async function syncAttendanceResultsForRange(startDate: Date, endDate: Date) {
-  const startUTC = getUTCMidnight(startDate.toISOString().slice(0, 10));
-  const endUTC = getUTCMidnight(endDate.toISOString().slice(0, 10));
+export async function syncAttendanceResultsForRange(
+  startDate: Date,
+  endDate: Date
+) {
+  const startIso = startDate.toISOString().slice(0, 10);
+  const endIso = endDate.toISOString().slice(0, 10);
+  const startUTC = getUTCMidnight(startIso);
+  const endUTC = getUTCMidnight(endIso);
+  const now = new Date();
+  const todayIso = format(now, "yyyy-MM-dd");
 
   // Fetch all shifts in [startUTC, endUTC]
-  const assignments = await prisma.shiftAssignment.findMany({
-    where: {
-      workDate: { gte: startUTC, lte: endUTC },
-      status: { not: "CANCELLED" },
-    },
-    include: { shiftTemplate: true, employee: true },
-    orderBy: [{ workDate: "asc" }, { employeeId: "asc" }, { sequence: "asc" }],
-  });
+  const [assignments, allTemplates] = await Promise.all([
+    prisma.shiftAssignment.findMany({
+      where: {
+        workDate: { gte: startUTC, lte: endUTC },
+        status: { not: "CANCELLED" },
+      },
+      include: { shiftTemplate: true, employee: true },
+      orderBy: [{ workDate: "asc" }, { employeeId: "asc" }, { sequence: "asc" }],
+    }),
+    prisma.shiftTemplate.findMany({
+      orderBy: { startTime: "asc" },
+    }),
+  ]);
 
-  // Fetch all punches in window [startUTC - 3h, endUTC + 1 day 8h]
-  const punchWindowStart = addMinutes(startUTC, -180);
-  const punchWindowEnd = addMinutes(addDays(endUTC, 1), 480);
+  // Fetch all punches in window [startUTC - 1d, endUTC + 2d] to cover local TZ boundaries & night shifts
+  const punchWindowStart = subDays(startUTC, 1);
+  const punchWindowEnd = addDays(endUTC, 2);
 
   const rawPunches = await prisma.iclockTransaction.findMany({
     where: {
@@ -96,7 +119,9 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
 
   // Map empCode -> employeeId for any punches where empId is null
   const missingEmpCodes = Array.from(
-    new Set(rawPunches.filter((p) => !p.empId && p.empCode).map((p) => p.empCode))
+    new Set(
+      rawPunches.filter((p) => !p.empId && p.empCode).map((p) => p.empCode)
+    )
   );
   const empByCode = new Map<string, number>();
   if (missingEmpCodes.length > 0) {
@@ -109,15 +134,16 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
     }
   }
 
-  // Separate Staff Gate punches from Canteen punches
   type NormalizedPunch = (typeof rawPunches)[number] & {
     resolvedEmpId: number | null;
+    localDateStr: string;
     device: ClassifiedDevice;
   };
 
   const normalizedPunches: NormalizedPunch[] = rawPunches.map((p) => ({
     ...p,
     resolvedEmpId: p.empId ?? empByCode.get(p.empCode) ?? null,
+    localDateStr: format(new Date(p.punchTime), "yyyy-MM-dd"),
     device: classifyDevice(p),
   }));
 
@@ -128,16 +154,17 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
     (p) => p.resolvedEmpId != null && p.device.category === "CANTEEN"
   );
 
-  // Collect all distinct dates that have either a shift assignment or a gate punch
+  // Collect all distinct dates in [startIso, endIso] that have either a shift assignment or a gate punch
   const activeDateStrings = new Set<string>();
   for (const a of assignments) {
-    activeDateStrings.add(a.workDate.toISOString().slice(0, 10));
+    const dStr = a.workDate.toISOString().slice(0, 10);
+    if (dStr >= startIso && dStr <= endIso) {
+      activeDateStrings.add(dStr);
+    }
   }
   for (const p of gatePunches) {
-    const dStr = p.punchTime.toISOString().slice(0, 10);
-    const dUTC = getUTCMidnight(dStr);
-    if (dUTC >= startUTC && dUTC <= endUTC) {
-      activeDateStrings.add(dStr);
+    if (p.localDateStr >= startIso && p.localDateStr <= endIso) {
+      activeDateStrings.add(p.localDateStr);
     }
   }
 
@@ -146,9 +173,7 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
   }
 
   // Ensure a fallback ShiftTemplate exists for unscheduled Staff Gate attendance
-  let defaultTemplate = await prisma.shiftTemplate.findFirst({
-    orderBy: { startTime: "asc" },
-  });
+  let defaultTemplate = allTemplates[0];
   if (!defaultTemplate) {
     defaultTemplate = await prisma.shiftTemplate.create({
       data: {
@@ -162,9 +187,24 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
         breakMinutes: 60,
       },
     });
+    allTemplates.push(defaultTemplate);
   }
 
-  // Clear existing AttendanceResult rows in this date range that don't have manual corrections attached
+  const morningTemplate =
+    allTemplates.find(
+      (t) =>
+        t.code.toUpperCase().startsWith("M") ||
+        t.name.toLowerCase().includes("morning")
+    ) || defaultTemplate;
+
+  const afternoonTemplate =
+    allTemplates.find(
+      (t) =>
+        t.code.toUpperCase().startsWith("A") ||
+        t.name.toLowerCase().includes("afternoon")
+    ) || defaultTemplate;
+
+  // Clear existing AttendanceResult rows in these active dates that don't have manual corrections
   const targetDates = Array.from(activeDateStrings).map((d) => getUTCMidnight(d));
   await prisma.attendanceException.deleteMany({
     where: {
@@ -179,17 +219,32 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
     },
   });
 
-  let processedCount = 0;
+  const rowsToInsert: Array<{
+    employeeId: number;
+    workDate: Date;
+    shiftTemplateId: string;
+    shiftAssignmentId: string | null;
+    sequence: number;
+    actualIn: Date | null;
+    actualOut: Date | null;
+    workedMinutes: number;
+    lateMinutes: number;
+    earlyExitMinutes: number;
+    overtimeMinutes: number;
+    breakMinutes: number;
+    status: string;
+    remarks: string;
+  }> = [];
 
   for (const dateStr of Array.from(activeDateStrings).sort()) {
     const dayUTC = getUTCMidnight(dateStr);
-    const nextDayUTC = addDays(dayUTC, 1);
+    const isToday = dateStr === todayIso;
+    const isFuture = dateStr > todayIso;
 
     const dayAssignments = assignments.filter(
       (a) => a.workDate.toISOString().slice(0, 10) === dateStr
     );
 
-    // Group assignments by employeeId
     const empAssignMap = new Map<number, typeof dayAssignments>();
     for (const a of dayAssignments) {
       const list = empAssignMap.get(a.employeeId) || [];
@@ -197,17 +252,15 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
       empAssignMap.set(a.employeeId, list);
     }
 
-    // Track which punch IDs were consumed by scheduled shifts
     const consumedPunchIds = new Set<number>();
 
     // 1. Process all employees with scheduled shifts on this day
     for (const [employeeId, empAssignments] of empAssignMap.entries()) {
-      const empGatePunches = gatePunches.filter((p) => p.resolvedEmpId === employeeId);
+      const empGatePunches = gatePunches.filter(
+        (p) => p.resolvedEmpId === employeeId
+      );
       const empCanteenPunches = canteenPunches.filter(
-        (p) =>
-          p.resolvedEmpId === employeeId &&
-          p.punchTime >= dayUTC &&
-          p.punchTime < nextDayUTC
+        (p) => p.resolvedEmpId === employeeId && p.localDateStr === dateStr
       );
 
       for (const assignment of empAssignments) {
@@ -215,17 +268,18 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
         const [startH, startM] = template.startTime.split(":").map(Number);
         const [endH, endM] = template.endTime.split(":").map(Number);
 
-        const expectedStart = new Date(dayUTC);
-        expectedStart.setUTCHours(startH || 0, startM || 0, 0, 0);
+        // Construct expected start/end in local server time (matching biometric clock time)
+        const expectedStart = new Date(`${dateStr}T00:00:00`);
+        expectedStart.setHours(startH || 0, startM || 0, 0, 0);
 
-        let expectedEnd = new Date(dayUTC);
-        expectedEnd.setUTCHours(endH || 0, endM || 0, 0, 0);
+        let expectedEnd = new Date(`${dateStr}T00:00:00`);
+        expectedEnd.setHours(endH || 0, endM || 0, 0, 0);
         if (expectedEnd.getTime() <= expectedStart.getTime()) {
           expectedEnd = addDays(expectedEnd, 1);
         }
 
-        const windowStart = addMinutes(expectedStart, -180);
-        const windowEnd = addMinutes(expectedEnd, 240);
+        const windowStart = addMinutes(expectedStart, -240);
+        const windowEnd = addMinutes(expectedEnd, 300);
 
         const availablePunches = empGatePunches.filter(
           (p) =>
@@ -235,13 +289,21 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
         );
 
         const punchIn = availablePunches.length > 0 ? availablePunches[0] : null;
-        const punchOut =
+        // Only treat last punch as punchOut if there are >=2 punches separated by at least 15 minutes
+        const lastCandidate =
           availablePunches.length > 1
             ? availablePunches[availablePunches.length - 1]
             : null;
+        const punchOut =
+          punchIn &&
+          lastCandidate &&
+          differenceInMinutes(lastCandidate.punchTime, punchIn.punchTime) >= 15
+            ? lastCandidate
+            : null;
 
-        if (punchIn) consumedPunchIds.add(punchIn.id);
-        if (punchOut) consumedPunchIds.add(punchOut.id);
+        for (const ap of availablePunches) {
+          consumedPunchIds.add(ap.id);
+        }
 
         let status = "PRESENT";
         let lateMinutes = 0;
@@ -250,77 +312,101 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
         let overtimeMinutes = 0;
         const remarkParts: string[] = [];
 
-        if (!punchIn && !punchOut) {
+        if (!punchIn) {
+          if (isFuture || (isToday && isBefore(now, addMinutes(expectedStart, template.graceLate)))) {
+            // Shift hasn't started yet today — skip marking absent prematurely
+            continue;
+          }
           status = "ABSENT";
           remarkParts.push("No Staff Gate punch recorded");
-        } else if (punchIn && !punchOut) {
-          status = "MISSING_PUNCH";
-          remarkParts.push("Clocked in at Staff Gate; missing clock-out");
-        } else if (punchIn && punchOut) {
-          workedMinutes = Math.max(
-            0,
-            differenceInMinutes(punchOut.punchTime, punchIn.punchTime)
-          );
-          const scheduledMinutes = Math.max(
-            0,
-            differenceInMinutes(expectedEnd, expectedStart)
-          );
-
-          if (isAfter(punchIn.punchTime, addMinutes(expectedStart, template.graceLate))) {
-            lateMinutes = Math.max(0, differenceInMinutes(punchIn.punchTime, expectedStart));
-            status = "LATE";
+        } else {
+          // Always evaluate lateness on punchIn!
+          const lateCutoff = addMinutes(expectedStart, template.graceLate);
+          const isLate = isAfter(punchIn.punchTime, lateCutoff);
+          if (isLate) {
+            lateMinutes = Math.max(
+              0,
+              differenceInMinutes(punchIn.punchTime, expectedStart)
+            );
             remarkParts.push(`${lateMinutes}m late`);
           }
 
-          if (isBefore(punchOut.punchTime, addMinutes(expectedEnd, -template.graceEarly))) {
-            earlyExitMinutes = Math.max(
+          if (!punchOut) {
+            // Still on duty today (or shift ended recently) -> mark PRESENT or LATE!
+            if (isToday || isBefore(now, addMinutes(expectedEnd, 180))) {
+              status = isLate ? "LATE" : "PRESENT";
+              workedMinutes = Math.max(
+                0,
+                differenceInMinutes(now, punchIn.punchTime)
+              );
+              remarkParts.push("On duty (clocked in)");
+            } else {
+              status = isLate ? "LATE" : "MISSING_PUNCH";
+              remarkParts.push("Clocked in at Staff Gate; missing clock-out");
+            }
+          } else {
+            workedMinutes = Math.max(
               0,
-              differenceInMinutes(expectedEnd, punchOut.punchTime)
+              differenceInMinutes(punchOut.punchTime, punchIn.punchTime)
             );
-            status = status === "LATE" ? "LATE_AND_EARLY" : "EARLY_EXIT";
-            remarkParts.push(`${earlyExitMinutes}m early exit`);
-          }
+            const scheduledMinutes = Math.max(
+              0,
+              differenceInMinutes(expectedEnd, expectedStart)
+            );
 
-          if (workedMinutes > scheduledMinutes + 30) {
-            overtimeMinutes = workedMinutes - scheduledMinutes;
+            status = isLate ? "LATE" : "PRESENT";
+
+            if (
+              isBefore(
+                punchOut.punchTime,
+                addMinutes(expectedEnd, -template.graceEarly)
+              )
+            ) {
+              earlyExitMinutes = Math.max(
+                0,
+                differenceInMinutes(expectedEnd, punchOut.punchTime)
+              );
+              status = isLate ? "LATE_AND_EARLY" : "EARLY_EXIT";
+              remarkParts.push(`${earlyExitMinutes}m early exit`);
+            }
+
+            if (workedMinutes > scheduledMinutes + 30) {
+              overtimeMinutes = workedMinutes - scheduledMinutes;
+            }
           }
         }
 
         if (empCanteenPunches.length > 0) {
           const canteenTimes = empCanteenPunches
-            .map((c) => c.punchTime.toISOString().slice(11, 16))
+            .map((c) => format(new Date(c.punchTime), "HH:mm"))
             .join(", ");
           remarkParts.push(`Canteen: ${canteenTimes}`);
         }
 
-        await prisma.attendanceResult.create({
-          data: {
-            employeeId,
-            workDate: dayUTC,
-            shiftTemplateId: template.id,
-            shiftAssignmentId: assignment.id,
-            sequence: assignment.sequence,
-            actualIn: punchIn?.punchTime ?? null,
-            actualOut: punchOut?.punchTime ?? null,
-            workedMinutes,
-            lateMinutes,
-            earlyExitMinutes,
-            overtimeMinutes,
-            breakMinutes: template.breakMinutes || 60,
-            status,
-            remarks: remarkParts.join(" · ") || "Staff Gate verified",
-          },
+        rowsToInsert.push({
+          employeeId,
+          workDate: dayUTC,
+          shiftTemplateId: template.id,
+          shiftAssignmentId: assignment.id,
+          sequence: assignment.sequence,
+          actualIn: punchIn?.punchTime ?? null,
+          actualOut: punchOut?.punchTime ?? null,
+          workedMinutes,
+          lateMinutes,
+          earlyExitMinutes,
+          overtimeMinutes,
+          breakMinutes: template.breakMinutes || 60,
+          status,
+          remarks: remarkParts.join(" · ") || "Staff Gate verified",
         });
-        processedCount++;
       }
     }
 
-    // 2. Also process employees who punched at Staff Gate on this day WITHOUT a ShiftAssignment
+    // 2. Process employees who punched at Staff Gate on this day WITHOUT a ShiftAssignment
     const unscheduledDayGatePunches = gatePunches.filter(
       (p) =>
         !consumedPunchIds.has(p.id) &&
-        p.punchTime >= dayUTC &&
-        p.punchTime < nextDayUTC &&
+        p.localDateStr === dateStr &&
         !empAssignMap.has(p.resolvedEmpId!)
     );
 
@@ -334,50 +420,87 @@ export async function syncAttendanceResultsForRange(startDate: Date, endDate: Da
 
     for (const [employeeId, empPunches] of unscheduledByEmp.entries()) {
       const punchIn = empPunches[0];
-      const punchOut = empPunches.length > 1 ? empPunches[empPunches.length - 1] : null;
-      const workedMinutes =
-        punchIn && punchOut
-          ? Math.max(0, differenceInMinutes(punchOut.punchTime, punchIn.punchTime))
-          : 0;
-      const status = punchOut ? "PRESENT" : "MISSING_PUNCH";
+      const lastCandidate =
+        empPunches.length > 1 ? empPunches[empPunches.length - 1] : null;
+      const punchOut =
+        lastCandidate &&
+        differenceInMinutes(lastCandidate.punchTime, punchIn.punchTime) >= 15
+          ? lastCandidate
+          : null;
+
+      // Infer closest shift template (Morning vs Afternoon) from arrival hour
+      const arrivalHour = new Date(punchIn.punchTime).getHours();
+      const inferredTemplate =
+        arrivalHour >= 12 ? afternoonTemplate : morningTemplate;
+      const [startH, startM] = inferredTemplate.startTime.split(":").map(Number);
+      const expectedStart = new Date(`${dateStr}T00:00:00`);
+      expectedStart.setHours(startH || 0, startM || 0, 0, 0);
+
+      let lateMinutes = 0;
+      const lateCutoff = addMinutes(expectedStart, inferredTemplate.graceLate);
+      const isLate =
+        arrivalHour >= 5 && isAfter(punchIn.punchTime, lateCutoff);
+      if (isLate) {
+        lateMinutes = Math.max(
+          0,
+          differenceInMinutes(punchIn.punchTime, expectedStart)
+        );
+      }
+
+      const workedMinutes = punchOut
+        ? Math.max(0, differenceInMinutes(punchOut.punchTime, punchIn.punchTime))
+        : isToday
+        ? Math.max(0, differenceInMinutes(now, punchIn.punchTime))
+        : 0;
+
+      const status = isLate
+        ? "LATE"
+        : punchOut || isToday
+        ? "PRESENT"
+        : "MISSING_PUNCH";
 
       const empCanteenPunches = canteenPunches.filter(
-        (p) =>
-          p.resolvedEmpId === employeeId &&
-          p.punchTime >= dayUTC &&
-          p.punchTime < nextDayUTC
+        (p) => p.resolvedEmpId === employeeId && p.localDateStr === dateStr
       );
 
       const remarkParts: string[] = ["Unscheduled (Staff Gate)"];
-      if (!punchOut) remarkParts.push("Single punch (no OUT)");
+      if (isLate) remarkParts.push(`${lateMinutes}m late`);
+      if (!punchOut) {
+        remarkParts.push(
+          isToday ? "On duty (clocked in)" : "Single punch (no OUT)"
+        );
+      }
       if (empCanteenPunches.length > 0) {
         const canteenTimes = empCanteenPunches
-          .map((c) => c.punchTime.toISOString().slice(11, 16))
+          .map((c) => format(new Date(c.punchTime), "HH:mm"))
           .join(", ");
         remarkParts.push(`Canteen: ${canteenTimes}`);
       }
 
-      await prisma.attendanceResult.create({
-        data: {
-          employeeId,
-          workDate: dayUTC,
-          shiftTemplateId: defaultTemplate.id,
-          shiftAssignmentId: null,
-          sequence: 1,
-          actualIn: punchIn.punchTime,
-          actualOut: punchOut?.punchTime ?? null,
-          workedMinutes,
-          lateMinutes: 0,
-          earlyExitMinutes: 0,
-          overtimeMinutes: workedMinutes > 540 ? workedMinutes - 480 : 0,
-          breakMinutes: 60,
-          status,
-          remarks: remarkParts.join(" · "),
-        },
+      rowsToInsert.push({
+        employeeId,
+        workDate: dayUTC,
+        shiftTemplateId: inferredTemplate.id,
+        shiftAssignmentId: null,
+        sequence: 1,
+        actualIn: punchIn.punchTime,
+        actualOut: punchOut?.punchTime ?? null,
+        workedMinutes,
+        lateMinutes,
+        earlyExitMinutes: 0,
+        overtimeMinutes: workedMinutes > 540 ? workedMinutes - 480 : 0,
+        breakMinutes: inferredTemplate.breakMinutes || 60,
+        status,
+        remarks: remarkParts.join(" · "),
       });
-      processedCount++;
     }
   }
 
-  return { processed: processedCount };
+  if (rowsToInsert.length > 0) {
+    await prisma.attendanceResult.createMany({
+      data: rowsToInsert,
+    });
+  }
+
+  return { processed: rowsToInsert.length };
 }

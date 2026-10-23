@@ -5,10 +5,12 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import Link from "next/link";
 
 export async function HODDashboard({ session }: { session: Session }) {
-  const today = getUTCMidnight();
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+  const today = getUTCMidnight(todayIso);
   const departmentId = session.user.departmentId;
 
   if (!departmentId) {
@@ -28,6 +30,8 @@ export async function HODDashboard({ session }: { session: Session }) {
     include: { departmentManager: true }
   });
 
+  await syncAttendanceResultsForRange(today, today);
+
   const [
     totalStaff,
     todayShifts,
@@ -40,19 +44,26 @@ export async function HODDashboard({ session }: { session: Session }) {
   ] = await Promise.all([
     prisma.employee.count({ where: { departmentId } }),
     prisma.shiftAssignment.count({
-      where: { workDate: today, employee: { departmentId } }
+      where: { workDate: today, status: { not: "CANCELLED" }, employee: { departmentId } }
     }),
     prisma.attendanceResult.count({
-      where: { workDate: today, status: { in: ["PRESENT", "LATE", "EARLY_EXIT"] }, employee: { departmentId } }
+      where: { workDate: today, actualIn: { not: null }, employee: { departmentId } }
     }),
     prisma.attendanceResult.count({
       where: { workDate: today, status: { in: ["ABSENT", "NO_SHOW"] }, employee: { departmentId } }
     }),
     prisma.attendanceResult.count({
-      where: { workDate: today, status: "LATE", employee: { departmentId } }
+      where: {
+        workDate: today,
+        employee: { departmentId },
+        OR: [
+          { status: { in: ["LATE", "LATE_AND_EARLY"] } },
+          { lateMinutes: { gt: 0 } },
+        ],
+      }
     }),
     prisma.shiftAssignment.count({
-      where: { workDate: today, sequence: 2, employee: { departmentId } }
+      where: { workDate: today, sequence: 2, status: { not: "CANCELLED" }, employee: { departmentId } }
     }),
     prisma.attendanceException.findMany({
       where: { status: "PENDING", employee: { departmentId } },
@@ -61,20 +72,27 @@ export async function HODDashboard({ session }: { session: Session }) {
       orderBy: { createdAt: "desc" }
     }),
     prisma.shiftAssignment.findMany({
-      where: { employee: { departmentId } },
+      where: { status: { not: "CANCELLED" }, employee: { departmentId } },
       take: 5,
       include: { employee: true, shiftTemplate: true },
       orderBy: { createdAt: "desc" }
     }),
   ]);
 
+  const attendanceRate =
+    todayShifts > 0
+      ? Math.min(100, Math.round((todayPresent / todayShifts) * 100))
+      : todayPresent > 0 && totalStaff > 0
+      ? Math.min(100, Math.round((todayPresent / totalStaff) * 100))
+      : 0;
+
   const cards = [
     { title: "Department Staff", value: totalStaff, icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
-    { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
+    { title: "On Duty Today", value: todayPresent, icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: `/attendance/results?date=${todayIso}` },
+    { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: `/reports/daily?date=${todayIso}&department=${departmentId}` },
     { title: "Today's Shifts", value: todayShifts, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts" },
-    { title: "Absent Staff", value: absentStaff, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
-    { title: "Late Staff", value: lateStaff, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
-    { title: "Open Exceptions", value: exceptions.length, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },
+    { title: "Absent Staff", value: absentStaff, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: `/reports/absence?date=${todayIso}&deptId=${departmentId}` },
+    { title: "Late Staff", value: lateStaff, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: `/reports/late?start=${todayIso}&end=${todayIso}&department=${departmentId}` },
   ];
 
   return (

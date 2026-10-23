@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Download } from "lucide-react";
 
@@ -8,12 +9,14 @@ export const dynamic = "force-dynamic";
 
 export default async function LateComingReport({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
-  const startStr = params?.start as string | undefined;
+  const startStr = (params?.start as string | undefined) || format(new Date(), "yyyy-MM-dd");
   const endStr = params?.end as string | undefined;
   const deptId = params?.department as string | undefined;
   
   const startDate = getUTCMidnight(startStr);
   const endDate = endStr ? getUTCMidnight(endStr) : startDate;
+
+  await syncAttendanceResultsForRange(startDate, endDate);
 
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
   

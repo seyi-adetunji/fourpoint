@@ -2,15 +2,17 @@ import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 import { format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Download } from "lucide-react";
 
 export default async function DailyAttendanceReport({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const params = await searchParams;
-  const dateStr = params?.date as string | undefined;
+  const dateStr = (params?.date as string | undefined) || format(new Date(), "yyyy-MM-dd");
   const deptId = params?.department as string | undefined;
   
   const targetDate = getUTCMidnight(dateStr);
+  await syncAttendanceResultsForRange(targetDate, targetDate);
   
   const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
 

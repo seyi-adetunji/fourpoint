@@ -3,14 +3,21 @@ import { Users, UserX, Clock, AlertCircle, Calendar, Timer, FileText, CalendarOf
 import Link from "next/link";
 import { subDays, format } from "date-fns";
 import { getUTCMidnight } from "@/lib/dateUtils";
+import { syncAttendanceResultsForRange } from "@/lib/attendanceProcessor";
 import { AttendanceChart } from "@/components/AttendanceChart";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Session } from "next-auth";
 
 export async function AdminDashboard({ session }: { session: Session }) {
-  const today = getUTCMidnight();
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+  const today = getUTCMidnight(todayIso);
   const sevenDaysAgo = subDays(today, 6);
+  const localDayStart = new Date(`${todayIso}T00:00:00`);
+  const localDayEnd = new Date(`${todayIso}T23:59:59.999`);
+
+  // Automatically sync biometric punches + shift assignments into AttendanceResult for the last 7 days & today
+  await syncAttendanceResultsForRange(sevenDaysAgo, today);
 
   const [
     totalEmployees,
@@ -30,9 +37,11 @@ export async function AdminDashboard({ session }: { session: Session }) {
     terminals,
   ] = await Promise.all([
     prisma.employee.count(),
-    prisma.shiftAssignment.count({ where: { workDate: today } }),
+    prisma.shiftAssignment.count({
+      where: { workDate: today, status: { not: "CANCELLED" } },
+    }),
     prisma.attendanceResult.count({
-      where: { workDate: today, status: { in: ["PRESENT", "LATE", "EARLY_EXIT"] } }
+      where: { workDate: today, actualIn: { not: null } },
     }),
     prisma.attendanceException.count({ where: { status: "PENDING" } }),
     prisma.attendanceException.findMany({
@@ -43,21 +52,30 @@ export async function AdminDashboard({ session }: { session: Session }) {
     }),
     prisma.attendanceResult.findMany({
       where: { workDate: { gte: sevenDaysAgo, lte: today } },
-      select: { workDate: true, status: true }
+      select: { workDate: true, status: true, actualIn: true }
     }),
     prisma.attendanceResult.count({
-      where: { workDate: today, status: { in: ["ABSENT", "NO_SHOW", "MISSING_PUNCH"] } }
+      where: { workDate: today, status: { in: ["ABSENT", "NO_SHOW"] } }
     }),
     prisma.attendanceResult.count({
-      where: { workDate: today, status: "LATE" }
+      where: {
+        workDate: today,
+        OR: [
+          { status: { in: ["LATE", "LATE_AND_EARLY"] } },
+          { lateMinutes: { gt: 0 } },
+        ],
+      },
     }),
-    prisma.shiftAssignment.count({ where: { workDate: today, sequence: 2 } }),
+    prisma.shiftAssignment.count({
+      where: { workDate: today, sequence: 2, status: { not: "CANCELLED" } },
+    }),
     prisma.leaveRequest.count({ where: { status: "PENDING" } }),
     prisma.attendanceResult.findMany({
       where: { workDate: today, overtimeMinutes: { gt: 0 } },
       select: { overtimeMinutes: true }
     }),
     prisma.shiftAssignment.findMany({
+      where: { status: { not: "CANCELLED" } },
       take: 5,
       include: { employee: true, shiftTemplate: true },
       orderBy: { createdAt: "desc" }
@@ -65,8 +83,7 @@ export async function AdminDashboard({ session }: { session: Session }) {
     prisma.iclockTerminal.count(),
     prisma.iclockTransaction.count({ 
       where: { 
-        punchTime: { gte: today },
-        employee: { isNot: null } // Only count real employee punches
+        punchTime: { gte: localDayStart, lte: localDayEnd },
       } 
     }),
     prisma.iclockTerminal.findMany({ orderBy: { lastActivity: "desc" } }),
@@ -78,7 +95,12 @@ export async function AdminDashboard({ session }: { session: Session }) {
   ).length;
 
   const totalOvertimeHours = Math.round(overtimeResults.reduce((sum, r) => sum + r.overtimeMinutes, 0) / 60);
-  const attendanceRate = todayShifts > 0 ? Math.round((todayPresent / todayShifts) * 100) : 0;
+  const attendanceRate =
+    todayShifts > 0
+      ? Math.min(100, Math.round((todayPresent / todayShifts) * 100))
+      : todayPresent > 0 && totalEmployees > 0
+      ? Math.min(100, Math.round((todayPresent / totalEmployees) * 100))
+      : 0;
 
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const d = subDays(today, 6 - i);
@@ -87,14 +109,14 @@ export async function AdminDashboard({ session }: { session: Session }) {
 
   const chartData = last7Days.map(day => {
     const records = rawWeeklyData.filter(r => Math.abs(r.workDate.getTime() - day.date.getTime()) < 86400000);
-    const presentCount = records.filter(r => ["PRESENT", "LATE", "EARLY_EXIT"].includes(r.status)).length;
-    const absentCount = records.filter(r => ["ABSENT", "NO_SHOW", "MISSING_PUNCH"].includes(r.status)).length;
+    const presentCount = records.filter(r => r.actualIn !== null || ["PRESENT", "LATE", "EARLY_EXIT", "LATE_AND_EARLY"].includes(r.status)).length;
+    const absentCount = records.filter(r => ["ABSENT", "NO_SHOW"].includes(r.status)).length;
     return { date: day.label, present: presentCount, absent: absentCount };
   });
 
   const cards = [
     { title: "Total Staff", value: totalEmployees, detail: "View Detail", icon: Users, color: "text-secondary", bgColor: "bg-secondary/10", href: "/employees" },
-    { title: "On Duty Today", value: todayPresent, detail: "View Detail", icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: "/attendance/results?status=PRESENT" },
+    { title: "On Duty Today", value: todayPresent, detail: "View Detail", icon: Calendar, color: "text-emerald-600", bgColor: "bg-emerald-50", href: `/attendance/results?date=${todayIso}` },
     { title: "Live Punches Today", value: livePunchesToday, detail: "View Detail", icon: Timer, color: "text-indigo-600", bgColor: "bg-indigo-50", href: "/attendance/punches" },
     {
       title: "Connected Clocks",
@@ -105,10 +127,10 @@ export async function AdminDashboard({ session }: { session: Session }) {
       bgColor: activeTerminalCount > 0 ? "bg-emerald-50" : "bg-gray-100",
       href: "#terminal-status",
     },
-    { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: "/reports/daily" },
+    { title: "Attendance Rate", value: `${attendanceRate}%`, icon: Clock, color: "text-blue-600", bgColor: "bg-blue-50", href: `/reports/daily?date=${todayIso}` },
     { title: "Today's Shifts", value: todayShifts, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50", href: "/shifts" },
-    { title: "Absent / No Show", value: absentCount, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: "/reports/absence" },
-    { title: "Late Today", value: lateCount, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: "/reports/late" },
+    { title: "Absent / No Show", value: absentCount, icon: UserX, color: "text-red-600", bgColor: "bg-red-50", href: `/reports/absence?date=${todayIso}` },
+    { title: "Late Today", value: lateCount, icon: Clock, color: "text-amber-600", bgColor: "bg-amber-50", href: `/reports/late?start=${todayIso}&end=${todayIso}` },
     { title: "Exceptions", value: unresolvedExceptions, icon: AlertCircle, color: "text-accent", bgColor: "bg-accent/10", href: "/attendance/exceptions" },
   ];
 
